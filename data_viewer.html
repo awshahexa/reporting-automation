@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Data Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+.app { max-width: 1440px; margin: 0 auto; padding: 20px; }
+
+header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; padding: 20px 30px; border-radius: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+header h1 { font-size: 22px; font-weight: 600; }
+.header-info { font-size: 13px; opacity: 0.8; }
+
+.view-tabs { display: flex; gap: 2px; margin-bottom: 24px; background: #fff; border-radius: 10px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); flex-wrap: wrap; }
+.view-tab { padding: 12px 24px; border: none; background: transparent; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 8px; color: #667085; transition: all 0.2s; white-space: nowrap; }
+.view-tab:hover { color: #1a1a2e; background: #f8f9fa; }
+.view-tab.active { color: #1a1a2e; background: #f0f2f5; font-weight: 600; }
+.view-content { display: none; }
+.view-content.active { display: block; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.stat-card .num { font-size: 32px; font-weight: 700; }
+.stat-card .lbl { font-size: 12px; color: #667085; margin-top: 4px; }
+.stat-card.blue { border-left: 4px solid #3b82f6; } .stat-card.blue .num { color: #3b82f6; }
+.stat-card.green { border-left: 4px solid #22c55e; } .stat-card.green .num { color: #22c55e; }
+.stat-card.orange { border-left: 4px solid #f59e0b; } .stat-card.orange .num { color: #f59e0b; }
+.stat-card.purple { border-left: 4px solid #8b5cf6; } .stat-card.purple .num { color: #8b5cf6; }
+
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.chart-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.chart-box h3 { font-size: 14px; margin-bottom: 12px; color: #344054; }
+.chart-wrap { height: 300px; }
+
+.table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: auto; max-height: 600px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead { position: sticky; top: 0; z-index: 2; }
+thead th { background: #f8f9fa; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11px; color: #344054; border-bottom: 2px solid #e5e7eb; white-space: nowrap; }
+tbody td { padding: 6px 10px; border-bottom: 1px solid #f0f2f5; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tbody tr:hover { background: #f8f9fa; }
+
+.table-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.table-info h3 { font-size: 16px; }
+.table-info .meta { font-size: 12px; color: #667085; }
+.table-info select { padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 8px; font-size: 13px; }
+.pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.pagination button { padding: 6px 14px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; cursor: pointer; font-size: 12px; }
+.pagination button:hover { background: #f0f2f5; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination span { font-size: 12px; color: #667085; }
+
+.loading { text-align: center; padding: 40px; color: #667085; font-size: 14px; }
+.error { text-align: center; padding: 40px; color: #ef4444; font-size: 14px; }
+
+.drop-zone { border: 2px dashed #d0d5dd; border-radius: 12px; padding: 32px; text-align: center; background: #fff; margin-bottom: 24px; transition: all 0.2s; cursor: pointer; }
+.drop-zone:hover, .drop-zone.drag-over { border-color: #3b82f6; background: #f0f7ff; }
+.drop-zone .icon { font-size: 40px; color: #98a2b3; margin-bottom: 8px; }
+.drop-zone .text { font-size: 14px; color: #667085; }
+.drop-zone .text strong { color: #1a1a2e; }
+.drop-zone .hint { font-size: 12px; color: #98a2b3; margin-top: 4px; }
+.upload-result { margin-bottom: 24px; padding: 16px; border-radius: 10px; display: none; }
+.upload-result.success { display: block; background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+.upload-result.error { display: block; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .chart-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>&#9776; Database Data Viewer</h1>
+  <div class="header-info">
+    <span id="headerInfo">SQLite Explorer</span>
+  </div>
+</header>
+
+<div class="view-tabs" id="viewTabs"></div>
+<div id="viewContent"></div>
+</div>
+
+<script>
+const API = '';
+let currentView = 'dashboard';
+let tableState = {};
+
+const VIEWS = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'tables', label: 'Data Tables' }
+];
+
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+function renderViewTabs() {
+  const bar = document.getElementById('viewTabs');
+  bar.innerHTML = '';
+  VIEWS.forEach((v, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'view-tab' + (i === 0 ? ' active' : '');
+    btn.textContent = v.label;
+    btn.onclick = () => switchView(v.id);
+    btn.id = 'vt-' + v.id;
+    bar.appendChild(btn);
+  });
+}
+
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('vt-' + v).classList.add('active');
+  document.querySelectorAll('.view-content').forEach(c => c.classList.remove('active'));
+  const el = document.getElementById('vc-' + v);
+  if (el) el.classList.add('active');
+  renderView(v);
+}
+
+async function init() {
+  renderViewTabs();
+  const container = document.getElementById('viewContent');
+  container.innerHTML = VIEWS.map(v =>
+    `<div class="view-content${v.id === 'dashboard' ? ' active' : ''}" id="vc-${v.id}"></div>`
+  ).join('');
+  renderView('dashboard');
+}
+
+async function renderView(view) {
+  switch (view) {
+    case 'dashboard': renderDashboard(); break;
+    case 'tables': renderTables(); break;
+  }
+}
+
+// ── Dashboard (TBD) ──
+async function renderDashboard() {
+  const el = document.getElementById('vc-dashboard');
+  try {
+    const kpi = await api('/api/stats');
+    const tables = await api('/api/tables');
+    const docCounts = await api('/api/doc_counts');
+
+    el.innerHTML = `
+      <div class="drop-zone" id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">&#128196;</div>
+        <div class="text"><strong>Drop files here</strong> or click to browse</div>
+        <div class="hint">PDF, PNG, JPG — uploaded to Sites Document hot folder</div>
+        <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="handleFileSelect(this)">
+      </div>
+      <div id="uploadResult"></div>
+      <div class="stats">
+        <div class="stat-card blue"><div class="num">${kpi.total_sites || 0}</div><div class="lbl">Total Sites</div></div>
+        <div class="stat-card green"><div class="num">${kpi.total_documents || 0}</div><div class="lbl">Total Documents</div></div>
+        <div class="stat-card orange"><div class="num">${kpi.documents_extracted || 0}</div><div class="lbl">Documents Extracted</div></div>
+        <div class="stat-card purple"><div class="num">${tables.length || 0}</div><div class="lbl">Database Tables</div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-box">
+          <h3>Tables Overview</h3>
+          <div style="font-size:13px;color:#667085;line-height:1.8">
+            <table style="font-size:13px">
+              <thead><tr><th style="padding:6px 8px">Table</th><th style="padding:6px 8px">Rows</th></tr></thead>
+              <tbody>
+                ${tables.map(t => `<tr><td style="padding:4px 8px">${t.name}</td><td style="padding:4px 8px">${t.row_count}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="chart-box">
+          <h3>Documents by Type</h3>
+          <div style="font-size:13px;color:#667085;line-height:1.8">
+            <table style="font-size:13px">
+              <thead><tr><th style="padding:6px 8px">Doc Type</th><th style="padding:6px 8px">Count</th></tr></thead>
+              <tbody>
+                ${(docCounts || []).map(d => `<tr><td style="padding:4px 8px">${d.doc_type || d.type || '?'}</td><td style="padding:4px 8px">${d.count || 0}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="error">Failed to load dashboard: ${e.message}</div>`;
+  }
+}
+
+// ── File Upload ──
+let uploadQueue = [];
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if (files.length) uploadFiles(files);
+}
+
+function handleFileSelect(input) {
+  if (input.files.length) uploadFiles(input.files);
+  input.value = '';
+}
+
+async function uploadFiles(files) {
+  const resultEl = document.getElementById('uploadResult');
+  const formData = new FormData();
+  for (const f of files) {
+    formData.append('file', f);
+  }
+  resultEl.className = 'upload-result';
+  resultEl.innerHTML = 'Uploading ' + files.length + ' file(s)...';
+  resultEl.style.display = 'block';
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      resultEl.className = 'upload-result error';
+      resultEl.innerHTML = 'Error: ' + data.error;
+    } else if (data.count === 0) {
+      resultEl.className = 'upload-result error';
+      resultEl.innerHTML = 'No files were uploaded. Check file format?';
+    } else {
+      resultEl.className = 'upload-result success';
+      resultEl.innerHTML = '<strong>' + data.count + ' file(s) uploaded</strong> to hot folder:<br>' +
+        data.uploaded.map(u => '&bull; ' + u.filename + ' (' + u.size + ' bytes)').join('<br>');
+    }
+  } catch (e) {
+    resultEl.className = 'upload-result error';
+    resultEl.innerHTML = 'Upload failed: ' + e.message + '. Make sure the server is running.';
+  }
+}
+
+// ── Data Tables ──
+let tableList = [];
+
+async function renderTables() {
+  const el = document.getElementById('vc-tables');
+  el.innerHTML = '<div class="loading">Loading tables...</div>';
+  try {
+    tableList = await api('/api/tables');
+    if (!tableList.length) {
+      el.innerHTML = '<div class="error">No tables found</div>';
+      return;
+    }
+
+    let subTabs = tableList.map((t, i) =>
+      `<button class="view-tab${i === 0 ? ' active' : ''}" data-tname="${t.name}" onclick="switchTable('${t.name}')">${t.name} (${t.row_count})</button>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="view-tabs" style="flex-wrap:wrap">${subTabs}</div>
+      <div id="tableContent"></div>
+    `;
+
+    // Load first table
+    switchTable(tableList[0].name);
+  } catch (e) {
+    el.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+function switchTable(name) {
+  document.querySelectorAll('#vc-tables .view-tab').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`#vc-tables .view-tab[data-tname="${name}"]`);
+  if (btn) btn.classList.add('active');
+  if (!tableState[name]) tableState[name] = { offset: 0, limit: 200 };
+  renderTableData(name);
+}
+
+async function renderTableData(name) {
+  const el = document.getElementById('tableContent');
+  el.innerHTML = '<div class="loading">Loading data...</div>';
+  try {
+    const state = tableState[name] || { offset: 0, limit: 200 };
+    const data = await api(`/api/table/${name}?limit=${state.limit}&offset=${state.offset}`);
+
+    let html = `
+      <div class="table-info">
+        <div>
+          <h3>${data.table}</h3>
+          <div class="meta">${data.total} total rows · showing ${data.offset + 1}–${Math.min(data.offset + data.rows.length, data.total)}</div>
+        </div>
+        <select onchange="changeLimit('${name}', this.value)">
+          <option value="50" ${state.limit == 50 ? 'selected' : ''}>50 rows</option>
+          <option value="100" ${state.limit == 100 ? 'selected' : ''}>100 rows</option>
+          <option value="200" ${state.limit == 200 ? 'selected' : ''}>200 rows</option>
+          <option value="500" ${state.limit == 500 ? 'selected' : ''}>500 rows</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${data.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${data.rows.map(r => `<tr>${data.columns.map(c => {
+              let v = r[c];
+              if (v === null || v === undefined) return '<td style="color:#98a2b3">NULL</td>';
+              v = String(v);
+              if (v.length > 200) v = v.substring(0, 200) + '...';
+              return `<td title="${v.replace(/"/g, '&quot;')}">${v}</td>`;
+            }).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button onclick="prevPage('${name}')" ${state.offset <= 0 ? 'disabled' : ''}>Prev</button>
+        <span>Page ${Math.floor(state.offset / state.limit) + 1} of ${Math.ceil(data.total / state.limit)}</span>
+        <button onclick="nextPage('${name}')" ${state.offset + state.limit >= data.total ? 'disabled' : ''}>Next</button>
+      </div>
+    `;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+function changeLimit(name, limit) {
+  if (!tableState[name]) tableState[name] = { offset: 0, limit: 200 };
+  tableState[name].limit = parseInt(limit);
+  tableState[name].offset = 0;
+  renderTableData(name);
+}
+
+function prevPage(name) {
+  const state = tableState[name];
+  if (!state || state.offset <= 0) return;
+  state.offset = Math.max(0, state.offset - state.limit);
+  renderTableData(name);
+}
+
+function nextPage(name) {
+  const state = tableState[name];
+  if (!state) return;
+  state.offset += state.limit;
+  renderTableData(name);
+}
+
+init();
+</script>
+</body>
+</html>

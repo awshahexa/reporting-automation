@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporting Automation Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+.app { max-width: 1440px; margin: 0 auto; padding: 20px; }
+
+header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; padding: 20px 30px; border-radius: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+header h1 { font-size: 22px; font-weight: 600; }
+.header-info { font-size: 13px; opacity: 0.8; display: flex; gap: 16px; align-items: center; }
+.header-info button { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.header-info button:hover { background: rgba(255,255,255,0.25); }
+
+.view-tabs { display: flex; gap: 2px; margin-bottom: 24px; background: #fff; border-radius: 10px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.view-tab { padding: 12px 24px; border: none; background: transparent; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 8px; color: #667085; transition: all 0.2s; }
+.view-tab:hover { color: #1a1a2e; background: #f8f9fa; }
+.view-tab.active { color: #1a1a2e; background: #f0f2f5; font-weight: 600; }
+.view-content { display: none; }
+.view-content.active { display: block; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.stat-card .num { font-size: 32px; font-weight: 700; }
+.stat-card .lbl { font-size: 12px; color: #667085; margin-top: 4px; }
+.stat-card .sub { font-size: 11px; color: #98a2b3; margin-top: 2px; }
+.stat-card.blue { border-left: 4px solid #3b82f6; } .stat-card.blue .num { color: #3b82f6; }
+.stat-card.green { border-left: 4px solid #22c55e; } .stat-card.green .num { color: #22c55e; }
+.stat-card.orange { border-left: 4px solid #f59e0b; } .stat-card.orange .num { color: #f59e0b; }
+.stat-card.red { border-left: 4px solid #ef4444; } .stat-card.red .num { color: #ef4444; }
+
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.chart-full { display: grid; grid-template-columns: 1fr; gap: 24px; }
+.chart-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.chart-box h3 { font-size: 14px; margin-bottom: 12px; color: #344054; }
+.chart-wrap { height: 300px; }
+.chart-wrap-sm { height: 400px; }
+
+.table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow-x: auto; max-height: 500px; overflow-y: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { position: sticky; top: 0; z-index: 2; }
+thead th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; color: #344054; border-bottom: 2px solid #e5e7eb; cursor: pointer; white-space: nowrap; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid #f0f2f5; }
+tbody tr:hover { background: #f8f9fa; cursor: pointer; }
+
+.status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+.status-Completed { background: #dcfce7; color: #166534; }
+.status-Ongoing { background: #fef3c7; color: #92400e; }
+.status-Not_started { background: #fee2e2; color: #991b1b; }
+.status-Extracted { background: #dbeafe; color: #1e40af; }
+.status-Pending { background: #f3f4f6; color: #6b7280; }
+
+.alert-list { display: flex; flex-direction: column; gap: 8px; }
+.alert-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+.alert-item.high { border-left: 4px solid #ef4444; }
+.alert-item.medium { border-left: 4px solid #f59e0b; }
+.alert-item.info { border-left: 4px solid #3b82f6; }
+.alert-item .sev { font-size: 11px; font-weight: 600; text-transform: uppercase; min-width: 50px; }
+.alert-item .sev.high { color: #ef4444; }
+.alert-item .sev.medium { color: #f59e0b; }
+.alert-item .sev.info { color: #3b82f6; }
+.alert-item .msg { flex: 1; font-size: 13px; }
+.alert-item .meta { font-size: 11px; color: #98a2b3; }
+
+.site-detail { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-top: 16px; display: none; }
+.site-detail.show { display: block; }
+.site-detail h3 { font-size: 16px; margin-bottom: 4px; }
+.site-detail .meta { font-size: 13px; color: #667085; margin-bottom: 16px; }
+.site-detail .close { float: right; background: none; border: none; font-size: 20px; cursor: pointer; color: #98a2b3; }
+.site-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.site-detail-grid .col h4 { font-size: 13px; color: #344054; margin-bottom: 8px; }
+.site-detail-grid .col .item { font-size: 12px; padding: 4px 0; display: flex; }
+.site-detail-grid .col .item .lbl { color: #98a2b3; min-width: 100px; }
+
+.filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.filters select, .filters input { padding: 8px 12px; border: 1px solid #d0d5dd; border-radius: 8px; font-size: 13px; background: #fff; }
+.filters label { font-size: 13px; font-weight: 500; color: #344054; display: flex; align-items: center; gap: 6px; }
+
+@media (max-width: 900px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .chart-row { grid-template-columns: 1fr; }
+  .site-detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>&#9776; Reporting Automation Dashboard</h1>
+  <div class="header-info">
+    <span id="headerInfo">Loading...</span>
+    <button onclick="toggleAutoRefresh()" id="autoBtn" style="background:rgba(255,255,255,0.15);border:none;color:#fff;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px">Auto: OFF</button>
+    <button onclick="refreshData()">Refresh</button>
+    <span id="refreshIndicator" style="font-size:11px;opacity:0.6;min-width:60px"></span>
+  </div>
+</header>
+
+<div class="view-tabs" id="viewTabs"></div>
+<div id="viewContent"></div>
+</div>
+
+<script>
+const API = '';
+const VIEWS = [
+  { id: 'summary', label: 'Summary' },
+  { id: 'milestones', label: 'Milestones' },
+  { id: 'sites', label: 'Sites' },
+  { id: 'audit', label: 'Audit' },
+  { id: 'verification', label: 'Verification' },
+  { id: 'pmc_validate', label: 'PMC Validate' },
+  { id: 'bottleneck', label: 'Bottleneck' },
+  { id: 'alerts', label: 'Alerts' }
+];
+
+let chartInstances = {};
+let currentView = 'summary';
+let autoRefreshInterval = null;
+let autoRefreshOn = false;
+
+async function api(path) {
+  const r = await fetch(API + path);
+  return r.json();
+}
+
+function renderViewTabs() {
+  const bar = document.getElementById('viewTabs');
+  bar.innerHTML = '';
+  VIEWS.forEach((v, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'view-tab' + (i === 0 ? ' active' : '');
+    btn.textContent = v.label;
+    btn.onclick = () => switchView(v.id);
+    btn.id = 'vt-' + v.id;
+    bar.appendChild(btn);
+  });
+}
+
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('vt-' + v).classList.add('active');
+  document.querySelectorAll('.view-content').forEach(c => c.classList.remove('active'));
+  const el = document.getElementById('vc-' + v);
+  if (el) el.classList.add('active');
+  renderView(v);
+}
+
+async function refreshData() {
+  document.getElementById('headerInfo').textContent = 'Refreshing...';
+  await api('/api/refresh');
+  renderView(currentView);
+  document.getElementById('headerInfo').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+function toggleAutoRefresh() {
+  autoRefreshOn = !autoRefreshOn;
+  const btn = document.getElementById('autoBtn');
+  if (autoRefreshOn) {
+    btn.textContent = 'Auto: ON';
+    btn.style.background = 'rgba(34,197,94,0.3)';
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    autoRefreshInterval = setInterval(() => {
+      document.getElementById('refreshIndicator').textContent = '⟳';
+      api('/api/refresh').then(() => {
+        renderView(currentView);
+        document.getElementById('refreshIndicator').textContent = '✓ ' + new Date().toLocaleTimeString();
+      });
+    }, 60000);
+  } else {
+    btn.textContent = 'Auto: OFF';
+    btn.style.background = 'rgba(255,255,255,0.15)';
+    if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
+    document.getElementById('refreshIndicator').textContent = '';
+  }
+}
+
+async function init() {
+  renderViewTabs();
+  const summary = await api('/api/stats');
+  document.getElementById('headerInfo').textContent =
+    `${summary.total_sites} sites · ${summary.total_documents} documents · ${summary.fully_completed} fully completed · Updated ${new Date().toLocaleTimeString()}`;
+
+  const container = document.getElementById('viewContent');
+  container.innerHTML = VIEWS.map(v =>
+    `<div class="view-content${v.id === 'summary' ? ' active' : ''}" id="vc-${v.id}"></div>`
+  ).join('');
+
+  renderView('summary');
+}
+
+async function renderView(view) {
+  switch (view) {
+    case 'summary': renderSummary(); break;
+    case 'milestones': renderMilestones(); break;
+    case 'sites': renderSites(); break;
+    case 'audit': renderAudit(); break;
+    case 'verification': renderVerification(); break;
+    case 'pmc_validate': renderPmcValidate(); break;
+    case 'bottleneck': renderBottleneck(); break;
+    case 'alerts': renderAlerts(); break;
+  }
+}
+
+// ── SUMMARY ──
+async function renderSummary() {
+  const kpi = await api('/api/stats');
+  const alerts = await api('/api/alerts');
+  const progress = await api('/api/progress_summary');
+  const regions = await api('/api/regions');
+
+  let html = '<div class="stats">';
+  html += `<div class="stat-card blue"><div class="num">${kpi.total_sites}</div><div class="lbl">Total Sites</div><div class="sub">Across all workstreams</div></div>`;
+  html += `<div class="stat-card green"><div class="num">${kpi.fully_completed}</div><div class="lbl">Fully Completed</div><div class="sub">All 3 milestones done</div></div>`;
+  html += `<div class="stat-card orange"><div class="num">${kpi.any_ongoing}</div><div class="lbl">In Progress</div><div class="sub">At least 1 milestone ongoing</div></div>`;
+  html += `<div class="stat-card red"><div class="num">${kpi.not_started}</div><div class="lbl">Not Started</div><div class="sub">All milestones not started</div></div>`;
+  html += '</div>';
+
+  html += '<div class="chart-row">';
+  html += '<div class="chart-box"><h3>Milestone Completion</h3><div class="chart-wrap"><canvas id="sum-ms-chart"></canvas></div></div>';
+  html += '<div class="chart-box"><h3>Overall Progress</h3><div class="chart-wrap"><canvas id="sum-donut"></canvas></div></div>';
+  html += '</div>';
+
+  html += '<div class="chart-row">';
+  html += '<div class="chart-box"><h3>Sites by Region (FAC Completed)</h3><div class="chart-wrap"><canvas id="sum-region"></canvas></div></div>';
+  html += '<div class="chart-box"><h3>Recent Alerts (' + alerts.length + ')</h3><div class="alert-list">';
+  alerts.slice(0, 5).forEach(a => {
+    html += `<div class="alert-item ${a.severity}"><span class="sev ${a.severity}">${a.severity}</span><span class="msg">${a.message}</span><span class="meta">${a.site_code} · ${a.milestone}</span></div>`;
+  });
+  html += alerts.length === 0 ? '<div style="padding:20px;text-align:center;color:#22c55e">No alerts</div>' : '';
+  html += '</div></div></div>';
+
+  document.getElementById('vc-summary').innerHTML = html;
+
+  // Charts
+  const msLabels = Object.keys(progress);
+  const completed = msLabels.map(k => progress[k].completed);
+  const ongoing = msLabels.map(k => progress[k].ongoing);
+  const notStarted = msLabels.map(k => progress[k].not_started);
+
+  const ctx1 = document.getElementById('sum-ms-chart');
+  if (ctx1) {
+    if (chartInstances['sum-ms']) chartInstances['sum-ms'].destroy();
+    chartInstances['sum-ms'] = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: msLabels,
+        datasets: [
+          { label: 'Completed', data: completed, backgroundColor: '#22c55e80', borderColor: '#22c55e', borderWidth: 1 },
+          { label: 'Ongoing', data: ongoing, backgroundColor: '#f59e0b80', borderColor: '#f59e0b', borderWidth: 1 },
+          { label: 'Not Started', data: notStarted, backgroundColor: '#ef444480', borderColor: '#ef4444', borderWidth: 1 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              afterLabel: function(context) {
+                if (context.dataset.label === 'Completed') {
+                  const ml = context.label;
+                  const nodes = progress[ml] && progress[ml].completed_by_node;
+                  if (nodes) {
+                    const lines = Object.keys(nodes).sort().map(k => '  ' + k + ': ' + nodes[k]);
+                    return '\n' + lines.join('\n');
+                  }
+                }
+                return '';
+              }
+            }
+          }
+        },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+      }
+    });
+  }
+
+  const ctx2 = document.getElementById('sum-donut');
+  if (ctx2) {
+    if (chartInstances['sum-donut']) chartInstances['sum-donut'].destroy();
+    chartInstances['sum-donut'] = new Chart(ctx2, {
+      type: 'doughnut',
+      data: {
+        labels: ['Fully Completed', 'In Progress', 'Not Started'],
+        datasets: [{ data: [kpi.fully_completed, kpi.any_ongoing, kpi.not_started], backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  const ctx3 = document.getElementById('sum-region');
+  if (ctx3) {
+    if (chartInstances['sum-region']) chartInstances['sum-region'].destroy();
+    const rLabels = Object.keys(regions);
+    const rData = rLabels.map(k => regions[k].fac_completed);
+    const rTotal = rLabels.map(k => regions[k].total);
+    chartInstances['sum-region'] = new Chart(ctx3, {
+      type: 'bar',
+      data: {
+        labels: rLabels,
+        datasets: [
+          { label: 'FAC Completed', data: rData, backgroundColor: '#3b82f680', borderColor: '#3b82f6', borderWidth: 1 },
+          { label: 'Total Sites', data: rTotal, backgroundColor: '#e5e7eb80', borderColor: '#d0d5dd', borderWidth: 1 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { x: { stacked: false }, y: { beginAtZero: true } } }
+    });
+  }
+}
+
+// ── MILESTONES ──
+async function renderMilestones() {
+  const progress = await api('/api/progress_summary');
+
+  const msLabels = Object.keys(progress);
+  let html = '<div class="chart-row">';
+  msLabels.forEach(ms => {
+    const d = progress[ms];
+    html += '<div class="chart-box"><h3>' + ms + ' (' + d.completion_pct + '%)</h3><div class="chart-wrap"><canvas id="ms-' + ms + '"></canvas></div></div>';
+  });
+  html += '</div>';
+
+  document.getElementById('vc-milestones').innerHTML = html;
+
+  msLabels.forEach(ms => {
+    const d = progress[ms];
+    const ctx = document.getElementById('ms-' + ms);
+    if (ctx) {
+      if (chartInstances['ms-' + ms]) chartInstances['ms-' + ms].destroy();
+      const total = d.completed + d.ongoing + d.not_started;
+      const pct = (v) => total ? ((v / total) * 100).toFixed(1) + '%' : '0%';
+      chartInstances['ms-' + ms] = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Completed', 'Ongoing', 'Not Started'],
+          datasets: [{ data: [d.completed, d.ongoing, d.not_started], backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'] }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                generateLabels: function(chart2) {
+                  const data2 = chart2.data;
+                  return data2.labels.map((label, i) => ({
+                    text: label + ' ' + pct(data2.datasets[0].data[i]),
+                    fillStyle: data2.datasets[0].backgroundColor[i],
+                    strokeStyle: data2.datasets[0].backgroundColor[i],
+                    index: i
+                  }));
+                }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                afterLabel: function(context) {
+                  if (context.dataIndex === 0) {
+                    const nodes = d.completed_by_node;
+                    if (nodes) {
+                      const lines = Object.keys(nodes).sort().map(k => '  ' + k + ': ' + nodes[k]);
+                      return '\n' + lines.join('\n');
+                    }
+                  }
+                  return '';
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  });
+}
+
+// ── SITES ──
+async function renderSites() {
+  const sites = await api('/api/sites');
+  const statuses = await api('/api/milestones');
+  const progress = await api('/api/progress_summary');
+  const overallStatuses = await api('/api/overall_statuses');
+  const msLabels = Object.keys(progress);
+
+  const sm = {};
+  statuses.forEach(s => {
+    if (!sm[s.site_code]) sm[s.site_code] = {};
+    sm[s.site_code][s.milestone] = s.status;
+  });
+
+  const regions = [...new Set(sites.map(s => s.region).filter(Boolean))].sort();
+  const overallStatusValues = [...new Set(Object.values(overallStatuses).filter(Boolean))].sort();
+
+  let html = '<div class="filters">';
+  html += '<label>Region: <select id="st-reg" onchange="renderSitesTable()"><option value="">All</option>';
+  regions.forEach(r => html += `<option value="${r}">${r}</option>`);
+  html += '</select></label>';
+  html += '<label>Milestone: <select id="st-ms" onchange="renderSitesTable()"><option value="">All</option>';
+  msLabels.forEach(ms => html += `<option value="${ms}">${ms}</option>`);
+  html += '</select></label>';
+  html += '<label>Status: <select id="st-st" onchange="renderSitesTable()"><option value="">All</option><option value="Completed">Completed</option><option value="Ongoing">Ongoing</option><option value="Not started">Not started</option></select></label>';
+  html += '<label>Overall Status: <select id="st-os" onchange="renderSitesTable()"><option value="">All</option>';
+  overallStatusValues.forEach(os => html += `<option value="${os}">${os}</option>`);
+  html += '</select></label>';
+  html += '<label>Search: <input type="text" id="st-srch" placeholder="Site code..." oninput="renderSitesTable()"></label>';
+  html += '</div>';
+  html += '<div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Region</th><th>Node Type</th><th>Overall Status</th>';
+  msLabels.forEach(ms => html += `<th>${ms}</th>`);
+  html += '<th>Action</th></tr></thead><tbody id="st-tbody"></tbody></table></div>';
+  html += '<div class="site-detail" id="site-detail"></div>';
+
+  document.getElementById('vc-sites').innerHTML = html;
+  window._sitesData = { sites, sm, msLabels, overallStatuses };
+  renderSitesTable();
+}
+
+function renderSitesTable() {
+  const { sites, sm, msLabels, overallStatuses } = window._sitesData || {};
+  if (!sites) return;
+  const region = document.getElementById('st-reg')?.value || '';
+  const milestone = document.getElementById('st-ms')?.value || '';
+  const status = document.getElementById('st-st')?.value || '';
+  const search = (document.getElementById('st-srch')?.value || '').toLowerCase();
+
+  const tbody = document.getElementById('st-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = sites.filter(s => {
+    if (region && s.region !== region) return false;
+    if (search && !s.site_code.toLowerCase().includes(search)) return false;
+    const osFilter = document.getElementById('st-os')?.value || '';
+    const siteOs = (overallStatuses || {})[s.site_code] || '';
+    if (osFilter && siteOs !== osFilter) return false;
+    if (milestone) {
+      const mv = (sm[s.site_code] || {})[milestone];
+      const st = typeof mv === 'object' ? mv.status : (mv || 'Not started');
+      if (status) { if (st !== status) return false; }
+      else if (st === 'Not started') return false;
+    } else if (status) {
+      const anyMatch = msLabels.some(ms => {
+        const mv = (sm[s.site_code] || {})[ms];
+        const st = typeof mv === 'object' ? mv.status : (mv || 'Not started');
+        return st === status;
+      });
+      if (!anyMatch) return false;
+    }
+    return true;
+  }).map(s => {
+    const os = (overallStatuses || {})[s.site_code] || '';
+    return '<tr onclick="showSiteDetail(\'' + s.site_code + '\')">' +
+      '<td><strong>' + s.site_code + '</strong></td>' +
+      '<td>' + s.site_name + '</td>' +
+      '<td>' + (s.region || '') + '</td>' +
+      '<td>' + (s.node_type || '') + '</td>' +
+      '<td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + os + '">' + os + '</td>' +
+      msLabels.map(ms => {
+        const mv = (sm[s.site_code] || {})[ms];
+        const st = typeof mv === 'object' ? mv.status : (mv || 'Not started');
+        return '<td><span class="status-badge status-' + st.replace(/\s+/g,'_') + '">' + st + '</span></td>';
+      }).join('') +
+      '<td><button onclick="showSiteDetail(\'' + s.site_code + '\')" style="padding:4px 12px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;cursor:pointer;font-size:11px">View</button></td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function showSiteDetail(code) {
+  const data = await api('/api/site?code=' + code);
+  const panel = document.getElementById('site-detail');
+  if (!panel) return;
+
+  const s = data.site || {};
+  const docs = data.documents || [];
+  const ms = data.milestones || [];
+  const md = data.milestone_detail || [];
+  const overallStatus = data.overall_status || '';
+  const overallRemark = data.overall_remark || '';
+
+  let html = '<button class="close" onclick="this.parentElement.classList.remove(\'show\')">&times;</button>';
+  html += '<h3>' + (s.site_code || code) + ' - ' + (s.site_name || '') + '</h3>';
+  html += '<div class="meta">' + (s.region || '') + ' · ' + (s.node_type || '') + ' · ' + (s.du_name || '') + '</div>';
+
+  if (overallStatus || overallRemark) {
+    html += '<div class="overall-status-box" style="margin:12px 0;padding:12px;background:#f0f2f5;border-radius:8px;border-left:4px solid #3b82f6">';
+    html += '<strong style="color:#344054;font-size:13px">Overall Status:</strong> ';
+    html += '<span style="color:#1a1a2e;font-size:13px">' + overallStatus + '</span>';
+    if (overallRemark) {
+      html += '<div style="margin-top:6px;font-size:11px;color:#667085;max-height:120px;overflow-y:auto;white-space:pre-wrap">' + overallRemark + '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="site-detail-grid"><div class="col"><h4>Milestones</h4>';
+  md.forEach(m => {
+    html += '<div class="item" style="margin-bottom:8px">';
+    html += '<div><span class="lbl">' + m.milestone + ':</span> ';
+    html += '<span class="status-badge status-' + m.status.replace(/\s+/g,'_') + '">' + m.status + '</span>';
+    if (m.actual_date) html += ' <span style="font-size:11px;color:#667085">(' + m.actual_date + ')</span>';
+    html += '</div>';
+    if (!m.all_docs_uploaded) {
+      html += '<div style="font-size:11px;color:#ef4444;margin-top:2px">Missing docs: ' + m.missing_docs.join(', ') + '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:#22c55e;margin-top:2px">All documents uploaded</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div><div class="col"><h4>Equipment</h4>';
+  ['equipment_model','equipment_function','latitude','longitude'].forEach(f => {
+    if (s[f]) html += '<div class="item"><span class="lbl">' + f.replace(/_/g,' ') + ':</span>' + s[f] + '</div>';
+  });
+  html += '</div></div>';
+
+  if (docs.length) {
+    html += '<h4 style="margin-top:16px">Documents (' + docs.length + ')</h4>';
+    html += '<div class="table-wrap" style="max-height:200px"><table><thead><tr><th>Doc Type</th><th>Milestone</th><th>Filename</th><th>Status</th></tr></thead><tbody>';
+    docs.forEach(d => {
+      html += '<tr><td>' + d.doc_type + '</td><td>' + d.milestone + '</td><td>' + d.filename + '</td><td><span class="status-badge status-' + d.status + '">' + d.status + '</span></td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  panel.innerHTML = html;
+  panel.classList.add('show');
+}
+
+// ── AUDIT ──
+async function renderAudit() {
+  const [authChanges, trackerAudit, auditLog, dateSummary] = await Promise.all([
+    api('/api/unauthorized_date_changes'),
+    api('/api/tracker_audit'),
+    api('/api/audit'),
+    api('/api/date_changes_summary'),
+  ]);
+
+  let html = '';
+
+  // Date Changes section
+  html += '<h3 style="margin-bottom:12px;font-size:15px;color:#344054">Date Changes Audit</h3>';
+  if (dateSummary.total > 0) {
+    html += '<div class="stats" style="margin-bottom:16px">';
+    html += '<div class="stat-card ' + (dateSummary.overwrites > 0 ? 'red' : 'green') + '">';
+    html += '<div class="num">' + dateSummary.total + '</div><div class="lbl">Total Date Changes</div><div class="sub">' + dateSummary.overwrites + ' overwrites</div></div>';
+    html += '<div class="stat-card ' + (dateSummary.overwrites > 0 ? 'red' : 'green') + '">';
+    html += '<div class="num">' + dateSummary.overwrites + '</div><div class="lbl">Overwritten Dates</div><div class="sub">old value was non-empty</div></div>';
+    html += '<div class="stat-card green">';
+    html += '<div class="num">' + dateSummary.additions + '</div><div class="lbl">New Dates Set</div><div class="sub">first entry (no prior value)</div></div>';
+    html += '</div>';
+  } else {
+    html += '<p style="color:#667085;margin-bottom:16px">No date changes recorded yet.</p>';
+  }
+  html += '<div class="table-wrap" style="max-height:300px;margin-bottom:20px"><table><thead><tr><th>Site</th><th>Activity</th><th>Field</th><th style="color:#ef4444">Old Value</th><th style="color:#22c55e">New Value</th><th>Changed At</th><th>Alert</th></tr></thead><tbody>';
+  if (authChanges.length) {
+    authChanges.forEach(r => {
+      const isOverwrite = r.old_value && r.old_value !== '';
+      html += '<tr' + (isOverwrite ? ' style="background:#fef2f2"' : '') + '>';
+      html += '<td>' + r.site_code + '</td><td>' + r.activity_name + '</td><td>' + r.field_name + '</td>';
+      if (isOverwrite) {
+        html += '<td style="color:#ef4444;text-decoration:line-through">' + r.old_value + '</td>';
+      } else {
+        html += '<td style="color:#667085">(empty)</td>';
+      }
+      html += '<td style="color:#22c55e;font-weight:bold">' + r.new_value + '</td>';
+      html += '<td>' + r.changed_at + '</td>';
+      html += '<td>' + (isOverwrite ? '<span style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold">UNAUTHORIZED</span>' : '<span style="background:#22c55e;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">NEW</span>') + '</td>';
+      html += '</tr>';
+    });
+  } else {
+    html += '<tr><td colspan="7" style="text-align:center;color:#22c55e;padding:20px">No date changes detected</td></tr>';
+  }
+  html += '</tbody></table></div>';
+
+  html += '<h3 style="margin:20px 0 12px;font-size:15px;color:#344054">All Tracker Field Changes (Last 200)</h3>';
+  html += '<div class="table-wrap" style="max-height:300px"><table><thead><tr><th>Site</th><th>Activity</th><th>Field</th><th>Old Value</th><th>New Value</th><th>Changed At</th></tr></thead><tbody>';
+  trackerAudit.forEach(r => {
+    const isChange = r.old_value && r.old_value !== r.new_value;
+    html += '<tr' + (isChange ? ' style="background:#fef2f2"' : '') + '><td>' + r.site_code + '</td><td>' + r.activity_name + '</td><td>' + r.field_name + '</td><td>' + (r.old_value || '') + '</td><td>' + (r.new_value || '') + '</td><td>' + r.changed_at + '</td></tr>';
+  });
+  if (!trackerAudit.length) html += '<tr><td colspan="6" style="text-align:center;color:#667085;padding:20px">No tracker changes yet (appears after next file drop)</td></tr>';
+  html += '</tbody></table></div>';
+
+  html += '<h3 style="margin:20px 0 12px;font-size:15px;color:#344054">Milestone Status Changes (Last 200)</h3>';
+  html += '<div class="table-wrap" style="max-height:300px"><table><thead><tr><th>Site</th><th>Milestone</th><th>Old Status</th><th>New Status</th><th>Detail</th><th>Time</th></tr></thead><tbody>';
+  auditLog.forEach(r => {
+    html += '<tr><td>' + (r.site_code || '') + '</td><td>' + (r.milestone || '') + '</td><td>' + (r.old_status || '') + '</td><td>' + (r.new_status || '') + '</td><td>' + (r.detail || '') + '</td><td>' + r.created_at + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  document.getElementById('vc-audit').innerHTML = html;
+}
+
+// ── PMC VALIDATE ──
+async function renderPmcValidate() {
+  const el = document.getElementById('vc-pmc_validate');
+  const items = await api('/api/pending_validate');
+  if (!items.length) {
+    el.innerHTML = '<div class="card"><h3>PMC Validation</h3><p style="color:#22c55e;font-weight:600">&#10003; No documents pending validation.</p></div>';
+    return;
+  }
+  let html = '<div class="card"><h3>PMC Validation — ' + items.length + ' pending</h3>';
+  html += '<div class="table-wrap"><table><thead><tr><th>Site</th><th>MS</th><th>Doc Type</th><th>This Doc</th><th>Related Docs</th><th>Issues to Validate</th><th>Action</th></tr></thead><tbody>';
+  for (const item of items) {
+    const viewUrl = item.path ? '/api/view_file?path=' + encodeURIComponent(item.path) : null;
+    const issuesDisplay = item.issues && item.issues.length
+      ? item.issues.map(i => '<span style="display:block;font-size:12px;color:#ef4444">&#9888; ' + i + '</span>').join('')
+      : '<span style="color:#6b7280;font-size:12px">Manual review required</span>';
+    const relatedDisplay = item.related_docs && item.related_docs.length
+      ? item.related_docs.map(rd => {
+          const rurl = '/api/view_file?path=' + encodeURIComponent(rd.path);
+          return '<a href="' + rurl + '" target="_blank" style="color:#2563eb;font-size:12px;display:inline-block;margin:1px 4px 1px 0;background:#f0f2f5;padding:2px 8px;border-radius:4px">' + rd.doc_type + '</a>';
+        }).join('')
+      : '<span style="color:#9ca3af;font-size:11px">None</span>';
+    const fileMissing = item.file_missing ? '<span style="color:#ef4444;font-weight:bold">[FILE MISSING]</span>' : '';
+    const docDisplay = item.path
+      ? '<a href="' + viewUrl + '" target="_blank" style="color:#2563eb;font-size:12px">' + item.filename + '</a><br><span style="font-size:11px;color:#9ca3af">' + item.size_kb + 'KB</span>'
+      : '<span style="color:#ef4444;font-size:12px">' + item.filename + '<br><strong>PDF not found</strong></span>';
+    html += '<tr id="pv-' + encodeURIComponent(item.path || item.rel_path) + '" style="vertical-align:top' + (item.file_missing ? ';background:#fef2f2' : '') + '">';
+    html += '<td>' + item.site + '</td>';
+    html += '<td>' + item.milestone + '</td>';
+    html += '<td>' + item.doc_type + ' ' + fileMissing + '</td>';
+    html += '<td>' + docDisplay + '</td>';
+    html += '<td style="max-width:300px">' + relatedDisplay + '</td>';
+    html += '<td style="max-width:400px">' + issuesDisplay + '</td>';
+    html += '<td>' + (item.path
+      ? '<button onclick="validateDoc(\'' + encodeURIComponent(item.path) + '\',\'' + item.site + '\',\'' + item.milestone + '\')" style="background:#22c55e;color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600">&#10003; Validate</button>'
+      : '<span style="color:#9ca3af;font-size:11px">Cannot validate</span>') + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table></div></div>';
+  el.innerHTML = html;
+}
+
+async function validateDoc(pathEnc, site, ms) {
+  const path = decodeURIComponent(pathEnc);
+  const r = await fetch('/api/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, site, milestone: ms })
+  });
+  const data = await r.json();
+  if (data.success) {
+    const row = document.getElementById('pv-' + pathEnc);
+    if (row) row.style.display = 'none';
+    const items = document.querySelectorAll('#vc-pmc_validate tbody tr');
+    const remaining = Array.from(items).filter(tr => tr.style.display !== 'none').length;
+    renderPmcValidate();
+  } else {
+    alert('Validation failed: ' + (data.error || 'unknown'));
+  }
+}
+
+// ── VERIFICATION ──
+async function renderVerification() {
+  const summary = await api('/api/verification_summary');
+  let html = '<div class="stats">';
+  summary.forEach(s => {
+    html += '<div class="stat-card ' + (s.failed > 0 ? 'red' : 'green') + '">';
+    html += '<div class="num">' + s.total + '</div>';
+    html += '<div class="lbl">' + s.doc_type.toUpperCase() + '</div>';
+    html += '<div class="sub">' + s.passed + ' passed · ' + s.failed + ' failed</div></div>';
+  });
+  html += '</div>';
+
+  html += '<h3 style="margin:24px 0 12px">Site Document Checklist</h3>';
+  html += '<div class="filters">';
+  html += '<label>Filter by Milestone: <select id="vcl-ms" onchange="renderVerificationChecklist()"><option value="">All</option><option value="CC">CC</option><option value="PAC">PAC</option><option value="FAC">FAC</option><option value="Not started">Not started</option></select></label>';
+  html += '<label>Search Site: <input id="vcl-search" oninput="renderVerificationChecklist()" placeholder="Type site code..."></label>';
+  html += '<label><input type="checkbox" id="vcl-hide-empty" onchange="renderVerificationChecklist()" checked> Hide empty</label>';
+  html += '</div>';
+  html += '<div id="vf-checklist-wrap"></div>';
+  document.getElementById('vc-verification').innerHTML = html;
+  renderVerificationChecklist();
+}
+
+async function renderVerificationChecklist() {
+  const msFilter = document.getElementById('vcl-ms').value;
+  const search = (document.getElementById('vcl-search').value || '').trim();
+  let url = '/api/verification_checklist?limit=500';
+  if (msFilter) url += '&milestone=' + encodeURIComponent(msFilter);
+  if (search) url += '&search=' + encodeURIComponent(search);
+  const data = await api(url);
+
+  const allDocTypes = ['PO','DN','BL','PL','TSSR','SATP','MOP','SMR','CC','FT','PAF','FAF'];
+  let html = '<div class="table-wrap" style="overflow-x:auto;max-height:600px"><table><thead><tr><th>Site</th><th>Node</th><th>Milestone</th>';
+  allDocTypes.forEach(dt => { html += '<th>' + dt + '</th>'; });
+  html += '<th>Issues</th></tr></thead><tbody>';
+
+  const hideEmpty = document.getElementById('vcl-hide-empty').checked;
+  let displayed = data;
+  if (hideEmpty) {
+    displayed = data.filter(r => {
+      return Object.values(r.docs).some(d => d && d.status);
+    });
+  }
+
+  displayed.forEach(r => {
+    html += '<tr>';
+    html += '<td><b>' + r.site_code + '</b></td>';
+    html += '<td>' + r.node_type + '</td>';
+    html += '<td><span class="status-badge status-' + r.milestone.replace(' ','_') + '">' + r.milestone + '</span></td>';
+    allDocTypes.forEach(dt => {
+      const d = r.docs[dt];
+      if (!d || !d.status) {
+        html += '<td style="text-align:center;color:#d1d5db">—</td>';
+      } else if (d.status === 'passed') {
+        html += '<td style="text-align:center;color:#22c55e;font-size:16px">✓</td>';
+      } else {
+        html += '<td style="text-align:center;color:#ef4444;font-size:16px;cursor:pointer" title="' + (d.issues || d.status) + '">✗</td>';
+      }
+    });
+    // Issues column: collect all failed issues for this site
+    let issues = [];
+    allDocTypes.forEach(dt => {
+      const d = r.docs[dt];
+      if (d && d.status && d.status !== 'passed' && d.issues) {
+        issues.push(dt + ': ' + d.issues.substring(0, 80));
+      }
+    });
+    html += '<td style="font-size:11px;color:#ef4444;max-width:250px;overflow:hidden">' + issues.join('; ') + '</td>';
+    html += '</tr>';
+  });
+
+  if (!data.length) html += '<tr><td colspan="' + (allDocTypes.length + 4) + '" style="text-align:center;color:#98a2b3;padding:20px">No sites match filter</td></tr>';
+  html += '</tbody></table></div>';
+  document.getElementById('vf-checklist-wrap').innerHTML = html;
+}
+
+// ── BOTTLENECK ──
+async function renderBottleneck() {
+  const pipeline = await api('/api/process_pipeline');
+
+  const labels = pipeline.map(p => p.stage);
+  const data = pipeline.map(p => p.count);
+  const total = data.reduce((a, b) => a + b, 0);
+
+  let html = '<div class="chart-full"><div class="chart-box"><h3>Sites Stuck by Process Stage</h3><div class="chart-wrap-sm"><canvas id="bn-chart"></canvas></div></div></div>';
+
+  html += '<div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>Stage</th><th>Sites</th><th>%</th></tr></thead><tbody>';
+  pipeline.forEach(p => {
+    const pct = total ? ((p.count / total) * 100).toFixed(1) : 0;
+    html += '<tr><td><strong>' + p.stage + '</strong></td><td>' + p.count + '</td><td>' + pct + '%</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  document.getElementById('vc-bottleneck').innerHTML = html;
+
+  const ctx = document.getElementById('bn-chart');
+  if (ctx) {
+    if (chartInstances['bn']) chartInstances['bn'].destroy();
+    chartInstances['bn'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{ label: 'Sites', data: data, backgroundColor: '#f59e0b80', borderColor: '#f59e0b', borderWidth: 1 }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const v = context.parsed.x;
+                const pct = total ? (v / total * 100).toFixed(1) : 0;
+                return v + ' sites (' + pct + '%)';
+              }
+            }
+          }
+        },
+        scales: { x: { beginAtZero: true, title: { display: true, text: 'Sites' } } }
+      },
+      plugins: [{
+        id: 'barLabels',
+        afterDraw(chart) {
+          const ctx2 = chart.ctx;
+          chart.getDatasetMeta(0).data.forEach((bar, i) => {
+            const val = chart.data.datasets[0].data[i];
+            if (val === 0) return;
+            ctx2.font = 'bold 12px sans-serif';
+            ctx2.fillStyle = '#344054';
+            ctx2.textAlign = 'left';
+            ctx2.textBaseline = 'middle';
+            ctx2.fillText(val, bar.x + 6, bar.y);
+          });
+        }
+      }]
+    });
+  }
+}
+
+// ── ALERTS ──
+async function renderAlerts() {
+  const alerts = await api('/api/alerts');
+  const atRisk = alerts.filter(a => a.severity !== 'info');
+  const info = alerts.filter(a => a.severity === 'info');
+
+  let html = '<div class="stats">';
+  const sevCounts = { high: 0, medium: 0, info: 0 };
+  alerts.forEach(a => { sevCounts[a.severity] = (sevCounts[a.severity] || 0) + 1; });
+  html += `<div class="stat-card red"><div class="num">${sevCounts.high || 0}</div><div class="lbl">High Risk</div></div>`;
+  html += `<div class="stat-card orange"><div class="num">${sevCounts.medium || 0}</div><div class="lbl">Medium Risk</div></div>`;
+  html += `<div class="stat-card blue"><div class="num">${sevCounts.info || 0}</div><div class="lbl">Info / Bottlenecks</div></div>`;
+  html += `<div class="stat-card green"><div class="num">${alerts.length}</div><div class="lbl">Total Alerts</div></div>`;
+  html += '</div>';
+
+  html += '<h3 style="margin-bottom:12px;font-size:15px;color:#344054">Risk Alerts</h3>';
+  html += '<div class="alert-list">';
+  atRisk.forEach(a => {
+    html += `<div class="alert-item ${a.severity}"><span class="sev ${a.severity}">${a.severity}</span><span class="msg">${a.message}</span><span class="meta">${a.site_code} · ${a.milestone}</span></div>`;
+  });
+  if (!atRisk.length) html += '<div style="padding:20px;text-align:center;color:#22c55e">No risk alerts</div>';
+  html += '</div>';
+
+  if (info.length) {
+    html += '<h3 style="margin:20px 0 12px;font-size:15px;color:#344054">Bottleneck Notifications</h3>';
+    html += '<div class="alert-list">';
+    info.forEach(a => {
+      html += `<div class="alert-item info"><span class="sev info">info</span><span class="msg">${a.message}</span><span class="meta">System</span></div>`;
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('vc-alerts').innerHTML = html;
+}
+
+init();
+</script>
+</body>
+</html>

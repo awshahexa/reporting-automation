@@ -1,0 +1,39 @@
+# Database
+reporting.db
+
+# Temp files
+_tmp_*
+_backfill_*
+_dump_*
+_check_*
+_resync*
+_dash_*
+server_*
+watchdog_*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Generated
+dashboard_static.html
+*.zip
+notifications/pdfs/
+
+# Exports
+exports/*.xlsx
+
+# Simulated SharePoint files (large PDFs)
+sharepoint_sim/
+
+# Notification PDFs
+notifications/pdfs/
+
+# Tracker Excel files (large, external)
+tracker_archive/

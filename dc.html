@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document Controller - Sacofa</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+.header { background: #1a1a2e; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; }
+.header .nav { margin-left: auto; display: flex; gap: 16px; }
+.header .nav a { color: #aaa; text-decoration: none; font-size: 13px; padding: 4px 0; border-bottom: 2px solid transparent; }
+.header .nav a:hover, .header .nav a.active { color: #fff; border-bottom-color: #4a6cf7; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; padding: 16px 24px; }
+.card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card .num { font-size: 28px; font-weight: 700; }
+.card .lbl { font-size: 12px; color: #888; margin-top: 2px; }
+.card.hot .num { color: #f59e0b; }
+.card.review .num { color: #3b82f6; }
+.card.ready .num { color: #10b981; }
+.card.archived .num { color: #8b5cf6; }
+.card.failed .num { color: #ef4444; }
+.content { padding: 0 24px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.full { grid-column: 1 / -1; }
+.panel { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+.panel .head { padding: 12px 16px; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.panel .head .badge { background: #e0e0e0; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: normal; color: #555; }
+.panel .body { max-height: 400px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; padding: 8px 12px; text-align: left; font-weight: 600; font-size: 11px; color: #666; text-transform: uppercase; white-space: nowrap; position: sticky; top: 0; }
+td { padding: 6px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+tr:hover td { background: #f5f7ff; }
+.badge-yes { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-no { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-pending { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.approve-btn { background: #10b981; color: #fff; border: none; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.approve-btn:hover { background: #059669; }
+.approve-btn:disabled { background: #ccc; cursor: default; }
+.search { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; width: 200px; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid #eee; }
+.tabs button { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 13px; color: #666; border-bottom: 2px solid transparent; }
+.tabs button.active { color: #1a1a2e; font-weight: 600; border-bottom-color: #4a6cf7; }
+.tabs button:hover { color: #1a1a2e; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.empty { padding: 30px; text-align: center; color: #888; font-size: 13px; }
+.panel .body table { min-width: 600px; }
+.arch-td { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .content { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📄 Document Controller</h1>
+  <div class="nav">
+    <a href="/" class="">Dashboard</a>
+    <a href="/dc" class="active">DC Panel</a>
+    <a href="/db">DB Browser</a>
+  </div>
+</div>
+
+<div class="cards" id="summary-cards">
+  <div class="card hot"><div class="num" id="stat-hot">-</div><div class="lbl">Hot Folder Pending</div></div>
+  <div class="card review"><div class="num" id="stat-review">-</div><div class="lbl">Documents in Review</div></div>
+  <div class="card ready"><div class="num" id="stat-ready">-</div><div class="lbl">Milestones Ready</div></div>
+  <div class="card archived"><div class="num" id="stat-archived">-</div><div class="lbl">Archived Total</div></div>
+  <div class="card archived"><div class="num" id="stat-today">-</div><div class="lbl">Archived Today</div></div>
+  <div class="card failed"><div class="num" id="stat-failed">-</div><div class="lbl">Failed / Rejected</div></div>
+</div>
+
+<div class="content">
+  <div class="panel full">
+    <div class="tabs">
+      <button class="active" onclick="switchTab('review')">Review Pipeline</button>
+      <button onclick="switchTab('archive')">Archive Log</button>
+    </div>
+
+    <div id="tab-review" class="tab-content active">
+      <div class="head">
+        <span>Review Readiness</span>
+        <span class="badge" id="review-count">0 milestones</span>
+        <input type="text" class="search" id="review-search" placeholder="Filter by site..." oninput="filterReview()" style="margin-left:auto;">
+      </div>
+      <div class="body" id="review-table-container">
+        <div class="empty">Loading...</div>
+      </div>
+    </div>
+
+    <div id="tab-archive" class="tab-content">
+      <div class="head">
+        <span>Archive Log</span>
+        <span class="badge" id="archive-count">0 entries</span>
+      </div>
+      <div class="body" id="archive-table-container">
+        <div class="empty">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "/api";
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+// ── Summary Cards ──
+async function loadSummary() {
+  try {
+    const s = await getJSON(`${API}/dc/summary`);
+    document.getElementById("stat-hot").textContent = s.hot_pending;
+    document.getElementById("stat-review").textContent = s.in_review;
+    document.getElementById("stat-ready").textContent = s.milestones_ready;
+    document.getElementById("stat-archived").textContent = s.archived_total.toLocaleString();
+    document.getElementById("stat-today").textContent = s.archived_today;
+    document.getElementById("stat-failed").textContent = s.failed;
+  } catch (e) { console.error(e); }
+}
+
+// ── Review Pipeline ──
+let reviewData = [];
+
+async function loadReview() {
+  try {
+    reviewData = await getJSON(`${API}/dc/review`);
+    document.getElementById("review-count").textContent = reviewData.length + " milestones";
+    renderReview(reviewData);
+  } catch (e) { console.error(e); }
+}
+
+function renderReview(data) {
+  const container = document.getElementById("review-table-container");
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="empty">No milestones in review</div>';
+    return;
+  }
+  let html = `<table><thead><tr>
+    <th>Site</th><th>Milestone</th><th>Files</th><th>Ready?</th><th>Missing Docs</th>
+  </tr></thead><tbody>`;
+  for (const r of data) {
+    const ready = r.all_docs_present && r.file_count > 0;
+    const missing = r.missing_docs.length ? r.missing_docs.join(", ") : "-";
+    html += `<tr>
+      <td><strong>${esc(r.site_code)}</strong></td>
+      <td>${r.milestone}</td>
+      <td>${r.file_count}</td>
+      <td><span class="${ready ? 'badge-yes' : 'badge-no'}">${ready ? 'YES' : 'NO'}</span></td>
+      <td style="color:${r.missing_docs.length ? '#991b1b' : '#065f46'}">${esc(missing)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function filterReview() {
+  const q = document.getElementById("review-search").value.toLowerCase();
+  if (!q) { renderReview(reviewData); return; }
+  const filtered = reviewData.filter(r => r.site_code.toLowerCase().includes(q));
+  document.getElementById("review-count").textContent = filtered.length + " milestones";
+  renderReview(filtered);
+}
+
+// ── Archive Log ──
+async function loadArchive() {
+  try {
+    const data = await getJSON(`${API}/dc/archive?limit=100`);
+    document.getElementById("archive-count").textContent = data.length + " entries";
+    const container = document.getElementById("archive-table-container");
+    if (!data || data.length === 0) {
+      container.innerHTML = '<div class="empty">No archived documents</div>';
+      return;
+    }
+    let html = `<table><thead><tr>
+      <th>Date</th><th>Filename</th><th>Doc Type</th><th>Source</th><th>Archive Path</th><th>Size</th>
+    </tr></thead><tbody>`;
+    for (const r of data) {
+      html += `<tr>
+        <td style="white-space:nowrap">${esc(r.archived_at || '')}</td>
+        <td>${esc(r.filename)}</td>
+        <td>${esc(r.doc_type)}</td>
+        <td>${esc(r.source_folder)}</td>
+        <td class="arch-td" title="${esc(r.archive_path)}">${esc(r.archive_path)}</td>
+        <td>${r.file_size ? (r.file_size / 1024).toFixed(1) + ' KB' : '-'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (e) { console.error(e); }
+}
+
+// ── Tabs ──
+function switchTab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+  document.querySelector(`.tabs button[onclick*="${name}"]`).classList.add("active");
+  document.getElementById(`tab-${name}`).classList.add("active");
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Init ──
+loadSummary();
+loadReview();
+loadArchive();
+setInterval(loadSummary, 10000);
+</script>
+</body>
+</html>

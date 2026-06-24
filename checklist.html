@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Milestone Checklist - Sacofa</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+.header { background: #1a1a2e; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; }
+.header .nav { margin-left: auto; display: flex; gap: 16px; }
+.header .nav a { color: #aaa; text-decoration: none; font-size: 13px; padding: 4px 0; border-bottom: 2px solid transparent; }
+.header .nav a:hover, .header .nav a.active { color: #fff; border-bottom-color: #4a6cf7; }
+.controls { padding: 16px 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.controls input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.controls .count { font-size: 13px; color: #888; margin-left: auto; }
+.summary { padding: 0 24px 16px; display: flex; gap: 16px; flex-wrap: wrap; }
+.sum-card { background: #fff; border-radius: 8px; padding: 12px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); text-align: center; min-width: 120px; }
+.sum-card .num { font-size: 24px; font-weight: 700; }
+.sum-card .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+.sum-card.cc .num { color: #3b82f6; }
+.sum-card.pac .num { color: #8b5cf6; }
+.sum-card.fac .num { color: #10b981; }
+.table-wrap { margin: 0 24px 24px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+th { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 11px; color: #666; text-transform: uppercase; white-space: nowrap; position: sticky; top: 0; }
+td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+tr:hover td { background: #f5f7ff; }
+.badge-ready { display: inline-block; background: #d1fae5; color: #065f46; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-not { display: inline-block; background: #fee2e2; color: #991b1b; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-none { display: inline-block; background: #f3f4f6; color: #9ca3af; padding: 2px 10px; border-radius: 10px; font-size: 11px; }
+.missing-docs { font-size: 11px; color: #991b1b; max-width: 200px; }
+.site-link { color: #4a6cf7; text-decoration: none; font-weight: 600; cursor: pointer; }
+.site-link:hover { text-decoration: underline; }
+.empty { padding: 40px; text-align: center; color: #888; font-size: 14px; }
+@media (max-width: 768px) { th, td { font-size: 12px; padding: 6px 8px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Milestone Checklist</h1>
+  <div class="nav">
+    <a href="/">Dashboard</a>
+    <a href="/dc">Document Control</a>
+    <a href="/checklist" class="active">Checklist</a>
+    <a href="/data">Data</a>
+  </div>
+</div>
+<div class="controls">
+  <input type="text" id="search" placeholder="Search site..." oninput="render()">
+  <select id="ms-filter" onchange="render()">
+    <option value="">All Milestones</option>
+    <option value="CC">CC</option>
+    <option value="PAC">PAC</option>
+    <option value="FAC">FAC</option>
+  </select>
+  <select id="status-filter" onchange="render()">
+    <option value="">All Status</option>
+    <option value="ready">Ready</option>
+    <option value="not-ready">Not Ready</option>
+  </select>
+  <span class="count" id="count"></span>
+</div>
+<div class="summary" id="summary"></div>
+<div class="table-wrap" id="table-wrap"><div class="empty">Loading...</div></div>
+
+<script>
+const MS_LABELS = { CC: 'CC', PAC: 'PAC', FAC: 'FAC' };
+const MILESTONE_ORDER = ['CC', 'PAC', 'FAC'];
+let data = [];
+
+async function load() {
+  try {
+    const r = await fetch('/api/readiness');
+    data = await r.json();
+    render();
+  } catch(e) {
+    document.getElementById('table-wrap').innerHTML = '<div class="empty">Error loading data</div>';
+  }
+}
+
+function render() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const msFilter = document.getElementById('ms-filter').value;
+  const stFilter = document.getElementById('status-filter').value;
+
+  let filtered = data.filter(row => {
+    if (q && !row.site_code.toLowerCase().includes(q)) return false;
+    if (msFilter) {
+      const ms = row[msFilter];
+      if (!ms || ms.files === 0) return false;
+    }
+    if (stFilter === 'ready') {
+      if (msFilter) { return row[msFilter] && row[msFilter].ready; }
+      return MILESTONE_ORDER.some(m => row[m] && row[m].ready);
+    }
+    if (stFilter === 'not-ready') {
+      if (msFilter) { return !row[msFilter] || !row[msFilter].ready; }
+      return MILESTONE_ORDER.some(m => row[m] && !row[m].ready);
+    }
+    return true;
+  });
+
+  document.getElementById('count').textContent = filtered.length + ' / ' + data.length + ' sites';
+
+  // Summary cards
+  const summaries = {};
+  for (const ms of MILESTONE_ORDER) {
+    const ready = data.filter(r => r[ms] && r[ms].ready).length;
+    const total = data.filter(r => r[ms] && r[ms].files > 0).length;
+    summaries[ms] = { ready, total };
+  }
+  document.getElementById('summary').innerHTML = MILESTONE_ORDER.map(ms =>
+    '<div class="sum-card ' + ms.toLowerCase() + '">' +
+      '<div class="num">' + summaries[ms].ready + ' / ' + summaries[ms].total + '</div>' +
+      '<div class="lbl">' + ms + ' Ready</div></div>'
+  ).join('');
+
+  // Table
+  if (filtered.length === 0) {
+    document.getElementById('table-wrap').innerHTML = '<div class="empty">No sites match filters</div>';
+    return;
+  }
+
+  let html = '<table><thead><tr><th>Site</th>';
+  for (const ms of MILESTONE_ORDER) {
+    html += '<th>' + MS_LABELS[ms] + ' <span style="font-weight:normal;color:#888;font-size:10px">' +
+      '(' + (summaries[ms].ready + '/' + summaries[ms].total) + ')</span></th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const row of filtered) {
+    html += '<tr><td><strong>' + row.site_code + '</strong></td>';
+    for (const ms of MILESTONE_ORDER) {
+      const info = row[ms];
+      if (!info || info.files === 0) {
+        html += '<td><span class="badge-none">—</span></td>';
+      } else if (info.ready) {
+        html += '<td><span class="badge-ready">Ready</span></td>';
+      } else {
+        html += '<td><span class="badge-not">Missing</span>' +
+          '<div class="missing-docs">' + info.missing.join(', ') + '</div></td>';
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('table-wrap').innerHTML = html;
+}
+
+load();
+</script>
+</body>
+</html>

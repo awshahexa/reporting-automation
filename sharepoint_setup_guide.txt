@@ -1,0 +1,65 @@
+Disk Space required for storage
+
+-1TB storage in sharepoint
+-
+
+
+# SharePoint Integration — Azure App Registration Guide
+
+## What We Need From Sacofa IT
+
+Please create an **Azure App Registration** in the Sacofa Microsoft 365 / Entra ID tenant with the following configuration:
+
+### 1. App Registration
+
+- **Name:** `Reporting-Automation-App`
+- **Supported account types:** "Accounts in this organizational directory only" (Single tenant)
+- **Redirect URI:** Not needed (app-only, no interactive login)
+
+### 2. API Permissions
+
+Add these **Microsoft Graph** application permissions:
+
+| Permission            | Type        | Purpose                                             |
+|-----------------------|-------------|-----------------------------------------------------|
+| `Sites.ReadWrite.All` | Application | Read & write files in SharePoint document libraries |
+
+After adding, click **"Grant admin consent"** for the entire organization.
+
+### 3. Authentication (Client Secret)
+
+- Go to **Certificates & secrets** > **Client secrets**
+- Click **"New client secret"**
+- Description: `Reporting-Automation-Secret`
+- Expiry: **24 months** (or as per your policy)
+- **Copy the secret value immediately** — it won't be shown again
+
+### 4. SharePoint Access
+
+Ensure the app has access to the target SharePoint site:
+- The `Sites.ReadWrite.All` permission covers all site collections in the tenant
+- If you prefer to restrict access, use `Sites.Selected` instead and grant permission to the specific site via PowerShell
+
+### 5. Provide the Following to Us
+
+| Item                      | Example                                                    |
+|---------------------------|------------------------------------------------------------|
+| **Tenant ID**             | `contoso.onmicrosoft.com` or GUID                          |
+| **Client ID**             | GUID from the App Registration overview page               |
+| **Client Secret**         | The value copied in step 3                                 |
+| **SharePoint Site URL**   | `https://sacofa.sharepoint.com/sites/Reporting`            |
+| **Document Library Name** | e.g., `Documents`, `HotFolder`, or `TSSR-Drop`             |
+
+### 6. Optional: Track the Site ID
+
+If you want us to use `Sites.Selected` (restricted) instead of `Sites.ReadWrite.All` (full access), run this PowerShell after granting permissions:
+
+```powershell
+Connect-PnPOnline -Url "https://sacofa.sharepoint.com/sites/Reporting"
+$siteId = (Get-PnPGraphAccessToken).site.id
+Write-Output $siteId
+```
+
+---
+
+**Contact us if you need help creating the App Registration — we can walk through it together.**
