@@ -1,4 +1,5 @@
 # Database
+reporting.db
 # Temp files
 _tmp_*
 _backfill_*
