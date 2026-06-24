@@ -75,7 +75,7 @@ class DatabaseAgent:
                 approved_designation TEXT,
                 approved_date TEXT,
                 raw_text TEXT,
-                status TEXT DEFAULT 'pending',
+                status TEXT DEFAULT 'uploaded',
                 error_message TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             );

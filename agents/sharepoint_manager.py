@@ -1165,6 +1165,11 @@ class SubmitAgent:
             with open(str(pending_dest) + ".issues", "w") as f:
                 json.dump({"issues": issues, "source": "quality_check"}, f)
             shutil.move(str(pdf_path), str(pending_dest))
+            for m in milestones:
+                try:
+                    self.db.upsert_document(site_code, doc_type, filename, milestone=m, filepath=str(pending_dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="uploaded")
+                except Exception:
+                    pass
             return {
                 "file": filename, "doc_type": doc_type, "site_code": site_code,
                 "milestones": milestones, "status": "pending_visual", "dests": [str(pending_dest)],
@@ -1183,6 +1188,10 @@ class SubmitAgent:
             dest = review_dir / filename
             shutil.copy2(str(pdf_path), str(dest))
             dests.append(str(dest))
+            try:
+                self.db.upsert_document(site_code, doc_type, filename, milestone=ms, filepath=str(dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="uploaded")
+            except Exception:
+                pass
 
         # Cross-check: if all CC docs exist, validate content
         cc_required = {"PO", "DN", "BL", "PL", "SATP"}
@@ -1207,6 +1216,10 @@ class SubmitAgent:
                     with open(str(pending_dest) + ".issues", "w") as f:
                         json.dump({"issues": issues_cc, "source": "cross_check", "details": cc_result}, f)
                     shutil.move(str(pdf_path), str(pending_dest))
+                    try:
+                        self.db.upsert_document(site_code, doc_type, filename, milestone=ms, filepath=str(pending_dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="uploaded")
+                    except Exception:
+                        pass
                     return {
                         "file": filename, "doc_type": doc_type, "site_code": site_code,
                         "milestones": milestones, "status": "pending_visual",
@@ -1223,6 +1236,10 @@ class SubmitAgent:
                     with open(str(pending_dest) + ".issues", "w") as f:
                         json.dump({"issues": issues_cc, "source": "cross_check", "details": cc_result}, f)
                     shutil.move(str(pdf_path), str(pending_dest))
+                    try:
+                        self.db.upsert_document(site_code, doc_type, filename, milestone=ms, filepath=str(pending_dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="uploaded")
+                    except Exception:
+                        pass
                     return {
                         "file": filename, "doc_type": doc_type, "site_code": site_code,
                         "milestones": milestones, "status": "pending_visual",

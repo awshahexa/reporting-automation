@@ -553,6 +553,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         review_dir.mkdir(parents=True, exist_ok=True)
         dest = review_dir / fp.name
         shutil.move(str(fp), str(dest))
+        # Update document DB record
+        try:
+            from agents.extract_base import _parse_filename
+            parsed = _parse_filename(fp.name)
+            doc_type = parsed[0] if parsed else ""
+            self.db.upsert_document(site.upper(), doc_type, fp.name, milestone=ms.upper(), filepath=str(dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="uploaded")
+        except Exception:
+            pass
         # Cleanup .issues sidecar if exists
         issues_file = fp.parent / (fp.name + ".issues")
         if issues_file.exists():
