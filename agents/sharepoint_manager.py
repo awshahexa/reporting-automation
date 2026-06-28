@@ -1607,6 +1607,56 @@ def cmd_pending_visual_status():
     print("Run 'sp-visual-approve <SITE> <MS>' after PMC confirms cross-check passes.")
 
 
+def cmd_notify_pmc_validation():
+    """Scan Pending_Visual_Check and send email to PMC with items list."""
+    from agents.notification_service import send_pmc_validation_email
+    import json as json_mod
+    mgr = SharePointManager()
+    items = mgr.scan_pending_visual_folders()
+    if not items:
+        print("No documents pending visual check. Nothing to notify.")
+        return
+
+    pv_items = []
+    for r in items:
+        site_dir = mgr._get_sites_doc_working_root() / "Pending_Visual_Check" / r["site_code"] / r["milestone"]
+        for fname in r["files"]:
+            fpath = site_dir / fname
+            issues_path = fpath.with_name(fpath.name + ".issues")
+            issues = ""
+            if issues_path.exists():
+                try:
+                    data = json_mod.loads(issues_path.read_text(encoding="utf-8"))
+                    if isinstance(data, list):
+                        issues = "; ".join(str(x) for x in data)
+                    elif isinstance(data, dict):
+                        issues = "; ".join(f"{k}: {v}" for k, v in data.items() if v)
+                except Exception:
+                    issues = "(unreadable issues file)"
+            pv_items.append({
+                "site": r["site_code"],
+                "milestone": r["milestone"],
+                "doc_type": SubmitAgent._identify_doc_type(fname) or "Unknown",
+                "filename": fname,
+                "issues": issues,
+            })
+
+    if not pv_items:
+        print("No items to notify.")
+        return
+
+    result = send_pmc_validation_email(pv_items)
+    print(f"PMC validation notification: {result['status']}")
+    if result["status"] == "sent":
+        print(f"  Email sent with {len(pv_items)} item(s) listed.")
+        for item in pv_items:
+            print(f"  - {item['site']}/{item['milestone']}: {item['filename']}")
+    elif result["status"] == "skipped":
+        print("  SMTP not configured — email skipped.")
+    else:
+        print(f"  Error: {result.get('message', 'Unknown')}")
+
+
 def cmd_visual_approve():
     """Move files from Pending_Visual_Check to Review after PMC confirmation."""
     if len(sys.argv) < 4:

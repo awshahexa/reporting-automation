@@ -34,6 +34,7 @@ Submit Pipeline (Sites Document):
   sp-notify-ready       Generate client notifications for milestones ready for review
   sp-pending-visual     Show docs needing PMC visual confirmation (OCR undetermined)
   sp-visual-approve <S> <M> Move from Pending_Visual_Check to Review after PMC OK
+  sp-notify-pmc         Send email to PMC with list of items needing manual verification
 
 File Renaming:
   rename      Preview rename: python run.py rename <folder>
@@ -221,6 +222,10 @@ def main():
     elif cmd == "sp-pending-visual":
         from agents.sharepoint_manager import cmd_pending_visual_status
         cmd_pending_visual_status()
+
+    elif cmd == "sp-notify-pmc":
+        from agents.sharepoint_manager import cmd_notify_pmc_validation
+        cmd_notify_pmc_validation()
 
     elif cmd == "sp-visual-approve":
         from agents.sharepoint_manager import cmd_visual_approve

@@ -92,3 +92,55 @@ def send_notification_email(site_code, milestone, pdf_path):
         return {"status": "sent", "message": f"Email sent to {SMTP['to_addr']}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+def send_pmc_validation_email(pv_items):
+    """Send email listing items pending manual verification (no attachment)."""
+    if not SMTP.get("host") or not SMTP.get("username"):
+        return {"status": "skipped", "message": "SMTP not configured"}
+
+    msg = EmailMessage()
+    msg["Subject"] = "PMC Validation Required — Items Pending Manual Verification"
+    msg["From"] = SMTP["from_addr"]
+    msg["To"] = SMTP["to_addr"]
+    if SMTP.get("cc_addr"):
+        msg["Cc"] = SMTP["cc_addr"]
+
+    lines = [
+        "Dear PMC,",
+        "",
+        "The following items require manual verification before they can proceed:",
+        "",
+        f"Total items: {len(pv_items)}",
+        "",
+        f"{'Site':14s} {'Milestone':8s} {'Doc Type':12s} {'Filename':40s}",
+        "-" * 74,
+    ]
+    for item in pv_items:
+        lines.append(
+            f"{item.get('site',''):14s} {item.get('milestone',''):8s} "
+            f"{item.get('doc_type',''):12s} {item.get('filename',''):40s}"
+        )
+        issues = item.get("issues")
+        if issues:
+            lines.append(f"{'':14s} Issues: {issues}")
+
+    lines.extend([
+        "",
+        "Please review each item in the Pending Visual Check folder.",
+        "Use 'sp-visual-approve <SITE> <MS>' to approve once verified.",
+        "",
+        "Regards,",
+        "Reporting Automation System",
+    ])
+    msg.set_content("\n".join(lines))
+
+    try:
+        with smtplib.SMTP(SMTP["host"], SMTP["port"]) as server:
+            if SMTP.get("use_tls"):
+                server.starttls()
+            server.login(SMTP["username"], SMTP["password"])
+            server.send_message(msg)
+        return {"status": "sent", "message": f"PMC validation email sent to {SMTP['to_addr']}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
