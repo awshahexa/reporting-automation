@@ -61,8 +61,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/upload":
             self._api_upload()
+        elif self.path == "/api/upload_tracker":
+            self._api_upload_tracker()
         elif self.path == "/api/validate":
             self._api_validate()
+        elif self.path == "/api/reject":
+            self._api_reject()
         else:
             self._json_response({"error": "Not found"}, 404)
 
@@ -90,6 +94,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", types.get(ext, "application/octet-stream"))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         with open(filepath, "rb") as f:
             self.wfile.write(f.read())
@@ -174,6 +181,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "all_docs_uploaded": len(missing) == 0,
                 "missing_docs": missing,
             })
+        ms_order = {"CC": 0, "PAC": 1, "FAC": 2}
+        detail.sort(key=lambda x: ms_order.get(x["milestone"], 99))
         os_val = self.db.get_activity_value(code, "IP Bearer Network", "Overall Status")
         self._json_response({
             "site": dict(site) if site else {},
@@ -325,26 +334,72 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._json_response(rows)
 
     def _api_process_pipeline(self):
-        from agents.config import SHAREPOINT_SIM_DIR, SITES_DOC_AREA, SITES_DOC_SUBMIT
-        sites = self.db.get_all_sites()
-        hot_root = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / SITES_DOC_SUBMIT
-        pv_root = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / "Pending_Visual_Check"
-        review_root = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / "Review"
-        approve_root = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / "Approve"
-        failed_root = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / SITES_DOC_SUBMIT / "_failed"
-        hot_count = len(list(hot_root.glob("*.pdf"))) if hot_root.exists() else 0
-        pv_count = sum(1 for _ in pv_root.rglob("*.pdf")) if pv_root.exists() else 0
-        review_count = sum(1 for _ in review_root.rglob("*.pdf")) if review_root.exists() else 0
-        approve_count = sum(1 for _ in approve_root.rglob("*.pdf")) if approve_root.exists() else 0
-        failed_count = len(list(failed_root.glob("*.pdf"))) if failed_root.exists() else 0
-        pipeline = [
-            {"stage": "Hot Folder", "count": hot_count},
-            {"stage": "Pending Visual Check", "count": pv_count},
-            {"stage": "Review", "count": review_count},
-            {"stage": "Approve", "count": approve_count},
-            {"stage": "Failed", "count": failed_count},
+        """Milestone vs docs comparison + overall status."""
+        ms_rows = self.db.get_milestone_status()
+        ms_required = {
+            "CC": ["PO", "DN", "BL", "PL", "TSSR", "SATP"],
+            "PAC": ["PO", "MOP", "SMR", "CC", "PAF"],
+            "FAC": ["PO", "PAF", "FAF"],
+        }
+
+        cc_c = sum(1 for m in ms_rows if m["milestone"] == "CC" and m["status"] == "Completed")
+        pac_c = sum(1 for m in ms_rows if m["milestone"] == "PAC" and m["status"] == "Completed")
+        fac_c = sum(1 for m in ms_rows if m["milestone"] == "FAC" and m["status"] == "Completed")
+
+        conn = self.db.connect()
+        # Sites with all required docs per milestone
+        doc_rows = conn.execute("""
+            SELECT site_code, milestone, doc_type FROM documents
+            WHERE milestone IS NOT NULL AND milestone != ''
+        """).fetchall()
+        site_ms_docs = {}
+        for r in doc_rows:
+            key = (r["site_code"], r["milestone"])
+            if key not in site_ms_docs:
+                site_ms_docs[key] = set()
+            site_ms_docs[key].add(r["doc_type"])
+
+        def count_docs_complete(ms, required):
+            return sum(1 for (sc, ml), docs in site_ms_docs.items()
+                       if ml == ms and all(d in docs for d in required))
+
+        def count_docs_any(ms):
+            return len(set(sc for (sc, ml) in site_ms_docs if ml == ms))
+
+        ms_compare = [
+            {"milestone": "CC", "tracker_completed": cc_c,
+             "docs_complete": count_docs_complete("CC", ms_required["CC"]),
+             "docs_any": count_docs_any("CC")},
+            {"milestone": "PAC", "tracker_completed": pac_c,
+             "docs_complete": count_docs_complete("PAC", ms_required["PAC"]),
+             "docs_any": count_docs_any("PAC")},
+            {"milestone": "FAC", "tracker_completed": fac_c,
+             "docs_complete": count_docs_complete("FAC", ms_required["FAC"]),
+             "docs_any": count_docs_any("FAC")},
         ]
-        self._json_response(pipeline)
+
+        # Overall status from tracker (IP Bearer Network > Overall Status)
+        os_rows = conn.execute("""
+            SELECT value, COUNT(*) as cnt FROM site_activities
+            WHERE field_name='IP Bearer Network > Overall Status'
+              AND value IS NOT NULL AND value != ''
+            GROUP BY value ORDER BY value
+        """).fetchall()
+        conn.close()
+        os_total = sum(r["cnt"] for r in os_rows)
+        def ov_pct(n):
+            return round((n / os_total * 100), 1) if os_total else 0
+        overall_statuses = [
+            {"stage": r["value"], "count": r["cnt"], "pct": ov_pct(r["cnt"])}
+            for r in os_rows
+        ]
+
+        total_sites = len(self.db.get_all_sites())
+        self._json_response({
+            "total_sites": total_sites,
+            "milestone_compare": ms_compare,
+            "overall_status": overall_statuses,
+        })
 
     def _api_documents(self):
         site = self._get_param("site")
@@ -435,6 +490,41 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     f.write(part.get_payload(decode=True))
                 uploaded.append(filename_clean)
         self._json_response({"uploaded": uploaded, "count": len(uploaded)})
+
+    def _api_upload_tracker(self):
+        """Upload tracker xlsx file(s) and sync to DB immediately."""
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._json_response({"error": "Expected multipart/form-data"}, 400)
+            return
+
+        from agents.config import SITES_DOC_AREA, SITES_DOC_SUBMIT
+        from agents.sharepoint_manager import SHAREPOINT_SIM_DIR
+        from agents.tracker_sync import sync_tracker_file
+        hot_dir = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / SITES_DOC_SUBMIT
+        hot_dir.mkdir(parents=True, exist_ok=True)
+
+        raw = self.rfile.read(int(self.headers.get("content-length", 0)))
+        boundary = content_type.split("boundary=", 1)[1].strip()
+        if boundary.startswith('"') and boundary.endswith('"'):
+            boundary = boundary[1:-1]
+        msg = BytesParser(policy=HTTP).parsebytes(
+            b"Content-Type: multipart/mixed; boundary=" + boundary.encode() + b"\r\n\r\n" + raw
+        )
+        results = []
+        for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            filename = part.get_filename()
+            if not filename:
+                continue
+            filename_clean = Path(filename).name
+            dest = hot_dir / filename_clean
+            with open(str(dest), "wb") as f:
+                f.write(part.get_payload(decode=True))
+            result = sync_tracker_file(str(dest))
+            results.append({"file": filename_clean, "result": result})
+        self._json_response({"synced": results, "count": len(results)})
 
     def _api_pending_validate(self):
         """List files in Pending_Visual_Check needing PMC validation."""
@@ -565,6 +655,44 @@ class DashboardHandler(BaseHTTPRequestHandler):
         issues_file = fp.parent / (fp.name + ".issues")
         if issues_file.exists():
             issues_file.unlink()
+        self._json_response({"success": True, "dest": str(dest)})
+
+    def _api_reject(self):
+        """Reject file from Pending_Visual_Check → _failed/ with comment."""
+        import json, shutil
+        from agents.config import SHAREPOINT_SIM_DIR, SITES_DOC_AREA, SITES_DOC_SUBMIT
+        raw = self.rfile.read(int(self.headers.get("content-length", 0)))
+        data = json.loads(raw)
+        path = data.get("path", "")
+        fp = Path(path)
+        if not fp.exists():
+            self._json_response({"success": False, "error": "File not found"}, 404)
+            return
+        comment = data.get("comment", "").strip()
+        if not comment:
+            self._json_response({"success": False, "error": "Rejection comment required"}, 400)
+            return
+        failed_dir = SHAREPOINT_SIM_DIR / "Working" / SITES_DOC_AREA / SITES_DOC_SUBMIT / "_failed"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        dest = failed_dir / fp.name
+        shutil.move(str(fp), str(dest))
+        # Save .reject sidecar with comment
+        reject_file = dest.with_name(dest.name + ".reject")
+        reject_file.write_text(json.dumps({"comment": comment, "rejected_at": datetime.now().isoformat()}, indent=2))
+        # Cleanup .issues sidecar
+        issues_file = fp.parent / (fp.name + ".issues")
+        if issues_file.exists():
+            issues_file.unlink()
+        # Update document DB record
+        try:
+            from agents.extract_base import _parse_filename
+            parsed = _parse_filename(fp.name)
+            doc_type = parsed[0] if parsed else ""
+            site = data.get("site") or fp.parent.parent.name
+            ms = data.get("milestone") or fp.parent.name
+            self.db.upsert_document(site.upper(), doc_type, fp.name, milestone=ms.upper(), filepath=str(dest), version="1", date_uploaded=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), doc_date=parsed[3] if parsed and len(parsed) > 3 else "", status="rejected")
+        except Exception:
+            pass
         self._json_response({"success": True, "dest": str(dest)})
 
     def _api_view_file(self):

@@ -136,37 +136,58 @@ def sync_tracker_file(filepath, db=None):
     ms_derived = 0
 
     for sc in sites_seen:
-        # CC = Commisioning Certificate has non-empty actual end time (any field_type)
-        cc_row = conn.execute("""
-            SELECT value FROM site_activities
+        # --- Three-state milestone derivation ---
+        # CC: Not started -> Ongoing (TSSR approved) -> Completed (Site PAC Approval actual date)
+        tssr_done = conn.execute("""
+            SELECT 1 FROM site_activities
+            WHERE site_code=? AND activity_name='Technical Site Survey'
+              AND field_name IN ('TSS > actual end time','eTSS SCF Approval > actual end time','eTSS ZTE Approval > actual end time')
+              AND value IS NOT NULL AND value != ''
+            LIMIT 1
+        """, (sc,)).fetchone()
+        cc_done = conn.execute("""
+            SELECT 1 FROM site_activities
             WHERE site_code=? AND activity_name='Commisioning Certificate'
-              AND field_name LIKE '%actual end time%'
+              AND field_name='Site PAC Approval > actual end time'
               AND value IS NOT NULL AND value != ''
             LIMIT 1
         """, (sc,)).fetchone()
-        cc_status = "Completed" if cc_row else "Not started"
+        if cc_done:
+            cc_status = "Completed"
+        elif tssr_done:
+            cc_status = "Ongoing"
+        else:
+            cc_status = "Not started"
 
-        # PAC = (Preliminary/Provisional) Acceptance Certification has status=Completed or actual end time
-        pac_row = conn.execute("""
-            SELECT value FROM site_activities
+        # PAC: Not started -> Ongoing (CC completed) -> Completed (PAC Approval actual date)
+        pac_done = conn.execute("""
+            SELECT 1 FROM site_activities
             WHERE site_code=? AND activity_name='(Preliminary/Provisional) Acceptance Certification'
-              AND (
-                (field_name='status' AND value='Completed')
-                OR (field_name LIKE '%actual end time%' AND value IS NOT NULL AND value != '')
-              )
-            LIMIT 1
-        """, (sc,)).fetchone()
-        pac_status = "Completed" if pac_row else "Not started"
-
-        # FAC = Final Acceptance Certification has actual end time
-        fac_row = conn.execute("""
-            SELECT value FROM site_activities
-            WHERE site_code=? AND activity_name='Final Acceptance Certification'
-              AND field_name LIKE '%actual end time%'
+              AND field_name='PAC Approval > actual end time'
               AND value IS NOT NULL AND value != ''
             LIMIT 1
         """, (sc,)).fetchone()
-        fac_status = "Completed" if fac_row else "Not started"
+        if pac_done:
+            pac_status = "Completed"
+        elif cc_done:
+            pac_status = "Ongoing"
+        else:
+            pac_status = "Not started"
+
+        # FAC: Not started -> Ongoing (PAC completed) -> Completed (FAC Approval actual date)
+        fac_done = conn.execute("""
+            SELECT 1 FROM site_activities
+            WHERE site_code=? AND activity_name='Final Acceptance Certification'
+              AND field_name='FAC Approval > actual end time'
+              AND value IS NOT NULL AND value != ''
+            LIMIT 1
+        """, (sc,)).fetchone()
+        if fac_done:
+            fac_status = "Completed"
+        elif pac_done:
+            fac_status = "Ongoing"
+        else:
+            fac_status = "Not started"
 
         conn.execute("""
             INSERT INTO milestone_status (site_code, milestone, status, updated_at)

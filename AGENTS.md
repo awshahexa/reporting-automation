@@ -297,17 +297,20 @@ Archive/Sites Document/     ← mirrors Approve, no stages
 
 ---
 
-## RESUME ANCHOR — Session 2026-06-25
+## RESUME ANCHOR — Session 2026-06-25 (This Session)
 
 ### Session Keyword: `resume_dn_zte_fix`
 
-### What We Did (Last Session)
-- **Fixed 6 dashboard bugs**: alerts (empty array), audit (wrong table), validate (orphaned .issues), site_detail (hardcoded all_docs_uploaded), pending_validate (skipped .issues-only dirs), bottleneck (only 2 stages)
-- **Fixed date_changes_summary**: Returns `{total, overwrites, additions}` object instead of raw array
-- **PMC Validate tab UI updated**: Handles file_missing flag, shows red "FILE MISSING" badge, disables Validate button for missing PDFs
-- **PV reconciled**: Removed 5 orphaned .issues files (PDFs already in Review); cleaned hundreds of empty CC/PAC/FAC subdirectories. PV now has 2 clean entries (YPAS, HOCK).
-- **Added `get_audit_log()` and `log_audit_event()`** to DatabaseAgent
-- **No backup this session** (changes are code-only, small)
+### What We Did (This Session)
+- **ACC column mapping verified**: CC approval at col 212, PAC at col 259, FAC at col 271 (0-indexed)
+- **All trackers resynced (2nd pass)**: Three-state milestones applied. Current: CC=129/646/181 (Completed/Ongoing/Not started), PAC=33/97/826, FAC=0/33/923
+- **Site detail — Required Documents table**: Always shows ALL required docs per milestone with Uploaded/Missing badges. Extra docs under "Other Uploaded Documents"
+- **Milestone sort enforced server-side**: `_api_site_detail` sorts CC→PAC→FAC
+- **Cache-Control no-cache headers**: Added to `_serve_static()`
+- **Reject button on PMC Validate tab**: Red Reject button alongside Validate. `POST /api/reject` moves file from PV to `_failed/`, saves `.reject` sidecar with comment + timestamp
+- **dashboard_static.html updated**: Mirror changes for Reject button
+- **Backup created**: `backup_20260625_074303.zip` (2.15 GB)
+- *(Earlier in session)* Fixed 6 dashboard bugs, date_changes_summary, PV reconciled, audit log
 
 ### Next Steps (planned)
 1. PAC/FAC milestone cross-document validation

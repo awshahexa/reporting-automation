@@ -52,7 +52,9 @@ tbody tr:hover { background: #f8f9fa; cursor: pointer; }
 .status-Ongoing { background: #fef3c7; color: #92400e; }
 .status-Not_started { background: #fee2e2; color: #991b1b; }
 .status-Extracted { background: #dbeafe; color: #1e40af; }
-.status-Pending { background: #f3f4f6; color: #6b7280; }
+  .status-Pending { background: #f3f4f6; color: #6b7280; }
+  .status-uploaded { background: #dcfce7; color: #166534; }
+  .status-missing { background: #fee2e2; color: #991b1b; }
 
 .alert-list { display: flex; flex-direction: column; gap: 8px; }
 .alert-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; display: flex; align-items: center; gap: 12px; }
@@ -113,8 +115,8 @@ const VIEWS = [
   { id: 'verification', label: 'Verification' },
   { id: 'pmc_validate', label: 'PMC Validate' },
   { id: 'bottleneck', label: 'Bottleneck' },
-  { id: 'alerts', label: 'Alerts' }
 ];
+
 
 let chartInstances = {};
 let currentView = 'summary';
@@ -201,7 +203,6 @@ async function renderView(view) {
     case 'verification': renderVerification(); break;
     case 'pmc_validate': renderPmcValidate(); break;
     case 'bottleneck': renderBottleneck(); break;
-    case 'alerts': renderAlerts(); break;
   }
 }
 
@@ -218,6 +219,13 @@ async function renderSummary() {
   html += `<div class="stat-card orange"><div class="num">${kpi.any_ongoing}</div><div class="lbl">In Progress</div><div class="sub">At least 1 milestone ongoing</div></div>`;
   html += `<div class="stat-card red"><div class="num">${kpi.not_started}</div><div class="lbl">Not Started</div><div class="sub">All milestones not started</div></div>`;
   html += '</div>';
+
+  // Tracker upload zone
+  html += '<div id="tracker-upload-zone" style="border:2px dashed #3b82f6;border-radius:8px;padding:16px;margin:16px 0;text-align:center;cursor:pointer;background:rgba(59,130,246,0.05)">';
+  html += '<div style="font-size:14px;color:#3b82f6;font-weight:600">Upload Tracker (.xlsx)</div>';
+  html += '<div style="font-size:11px;color:#6b7280;margin-top:4px">Drop ACC / IPCORE / TRUNK / RNC tracker files here</div>';
+  html += '<input type="file" id="tracker-file-input" accept=".xlsx" multiple style="display:none">';
+  html += '<div id="tracker-upload-status" style="margin-top:8px;font-size:12px;color:#6b7280"></div></div>';
 
   html += '<div class="chart-row">';
   html += '<div class="chart-box"><h3>Milestone Completion</h3><div class="chart-wrap"><canvas id="sum-ms-chart"></canvas></div></div>';
@@ -309,6 +317,39 @@ async function renderSummary() {
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { x: { stacked: false }, y: { beginAtZero: true } } }
     });
+  }
+
+  // Tracker upload handler
+  const zone = document.getElementById('tracker-upload-zone');
+  const fileInput = document.getElementById('tracker-file-input');
+  const statusEl = document.getElementById('tracker-upload-status');
+  zone.addEventListener('click', () => fileInput.click());
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.borderColor = '#22c55e'; });
+  zone.addEventListener('dragleave', () => { zone.style.borderColor = '#3b82f6'; });
+  zone.addEventListener('drop', (e) => { e.preventDefault(); zone.style.borderColor = '#3b82f6'; handleTrackerFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', () => handleTrackerFiles(fileInput.files));
+
+  async function handleTrackerFiles(files) {
+    if (!files.length) return;
+    const allowed = ['ACC', 'IPCORE', 'TRUNK', 'RNC'];
+    const valid = [];
+    for (const f of files) {
+      const name = f.name.toUpperCase();
+      if (!name.endsWith('.XLSX')) { statusEl.textContent = 'Only .xlsx files accepted'; return; }
+      if (!allowed.some(a => name.includes(a))) { statusEl.textContent = 'Filename must contain ACC/IPCORE/TRUNK/RNC'; return; }
+      valid.push(f);
+    }
+    statusEl.textContent = 'Uploading ' + valid.length + ' tracker(s)...';
+    const fd = new FormData();
+    valid.forEach(f => fd.append('files', f));
+    try {
+      const resp = await fetch('/api/upload_tracker', { method: 'POST', body: fd });
+      const data = await resp.json();
+      statusEl.textContent = data.synced.map(s => s.file + ': ' + (s.result.status || 'error')).join(', ');
+      setTimeout(() => renderSummary(), 1500);
+    } catch (e) {
+      statusEl.textContent = 'Upload failed: ' + e.message;
+    }
   }
 }
 
@@ -511,11 +552,35 @@ async function showSiteDetail(code) {
   });
   html += '</div></div>';
 
-  if (docs.length) {
-    html += '<h4 style="margin-top:16px">Documents (' + docs.length + ')</h4>';
+  const msRequired = {"CC":["PO","DN","BL","PL","TSSR","SATP"],"PAC":["PO","MOP","SMR","CC","PAF"],"FAC":["PO","PAF","FAF"]};
+  const uploadedMap = {};
+  docs.forEach(d => { const k = d.milestone+'_'+d.doc_type; uploadedMap[k] = d; });
+  let allDocRows = [];
+  let requiredKeys = new Set();
+  md.forEach(m => {
+    (msRequired[m.milestone] || []).forEach(dt => {
+      const key = m.milestone+'_'+dt;
+      requiredKeys.add(key);
+      const up = uploadedMap[key];
+      allDocRows.push({milestone:m.milestone, doc_type:dt, filename:up ? up.filename : '\u2014', status:up ? 'uploaded' : 'missing'});
+    });
+  });
+  if (allDocRows.length) {
+    html += '<h4 style="margin-top:16px">Required Documents</h4>';
     html += '<div class="table-wrap" style="max-height:200px"><table><thead><tr><th>Doc Type</th><th>Milestone</th><th>Filename</th><th>Status</th></tr></thead><tbody>';
-    docs.forEach(d => {
-      html += '<tr><td>' + d.doc_type + '</td><td>' + d.milestone + '</td><td>' + d.filename + '</td><td><span class="status-badge status-' + d.status + '">' + d.status + '</span></td></tr>';
+    allDocRows.forEach(d => {
+      const color = d.status === 'uploaded' ? '#22c55e' : '#ef4444';
+      const label = d.status === 'uploaded' ? 'Uploaded' : 'Missing';
+      html += '<tr><td>' + d.doc_type + '</td><td>' + d.milestone + '</td><td style="color:' + color + '">' + d.filename + '</td><td><span class="status-badge status-' + d.status + '">' + label + '</span></td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  let otherDocs = docs.filter(d => !requiredKeys.has(d.milestone+'_'+d.doc_type));
+  if (otherDocs.length) {
+    html += '<h4 style="margin-top:16px">Other Uploaded Documents</h4>';
+    html += '<div class="table-wrap" style="max-height:150px"><table><thead><tr><th>Doc Type</th><th>Milestone</th><th>Filename</th></tr></thead><tbody>';
+    otherDocs.forEach(d => {
+      html += '<tr><td>' + d.doc_type + '</td><td>' + (d.milestone||'\u2014') + '</td><td>' + d.filename + '</td></tr>';
     });
     html += '</tbody></table></div>';
   }
@@ -622,7 +687,7 @@ async function renderPmcValidate() {
     html += '<td style="max-width:300px">' + relatedDisplay + '</td>';
     html += '<td style="max-width:400px">' + issuesDisplay + '</td>';
     html += '<td>' + (item.path
-      ? '<button onclick="validateDoc(\'' + encodeURIComponent(item.path) + '\',\'' + item.site + '\',\'' + item.milestone + '\')" style="background:#22c55e;color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600">&#10003; Validate</button>'
+      ? '<div style="display:flex;gap:4px;flex-wrap:wrap"><button onclick="validateDoc(\'' + encodeURIComponent(item.path) + '\',\'' + item.site + '\',\'' + item.milestone + '\')" style="background:#22c55e;color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600">&#10003; Validate</button><button onclick="rejectDoc(\'' + encodeURIComponent(item.path) + '\',\'' + item.site + '\',\'' + item.milestone + '\')" style="background:#ef4444;color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600">&#10007; Reject</button></div>'
       : '<span style="color:#9ca3af;font-size:11px">Cannot validate</span>') + '</td>';
     html += '</tr>';
   }
@@ -646,6 +711,25 @@ async function validateDoc(pathEnc, site, ms) {
     renderPmcValidate();
   } else {
     alert('Validation failed: ' + (data.error || 'unknown'));
+  }
+}
+
+async function rejectDoc(pathEnc, site, ms) {
+  const comment = prompt('Enter rejection reason (required):');
+  if (!comment || !comment.trim()) return;
+  const path = decodeURIComponent(pathEnc);
+  const r = await fetch('/api/reject', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, site, milestone: ms, comment: comment.trim() })
+  });
+  const data = await r.json();
+  if (data.success) {
+    const row = document.getElementById('pv-' + pathEnc);
+    if (row) row.style.display = 'none';
+    renderPmcValidate();
+  } else {
+    alert('Rejection failed: ' + (data.error || 'unknown'));
   }
 }
 
@@ -727,102 +811,86 @@ async function renderVerificationChecklist() {
 
 // ── BOTTLENECK ──
 async function renderBottleneck() {
-  const pipeline = await api('/api/process_pipeline');
+  const resp = await api('/api/process_pipeline');
+  const compare = resp.milestone_compare || [];
+  const overall = resp.overall_status || [];
 
-  const labels = pipeline.map(p => p.stage);
-  const data = pipeline.map(p => p.count);
-  const total = data.reduce((a, b) => a + b, 0);
+  let html = '<div style="display:flex;flex-direction:column;align-items:center">';
 
-  let html = '<div class="chart-full"><div class="chart-box"><h3>Sites Stuck by Process Stage</h3><div class="chart-wrap-sm"><canvas id="bn-chart"></canvas></div></div></div>';
+  // Milestone vs Docs chart (top, 3/4 width)
+  html += '<div class="chart-box" style="width:75%;margin-bottom:24px"><h3>Milestones vs Docs Uploaded</h3><div class="chart-wrap-sm" style="height:250px"><canvas id="bn-ms-chart"></canvas></div></div>';
 
-  html += '<div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>Stage</th><th>Sites</th><th>%</th></tr></thead><tbody>';
-  pipeline.forEach(p => {
-    const pct = total ? ((p.count / total) * 100).toFixed(1) : 0;
-    html += '<tr><td><strong>' + p.stage + '</strong></td><td>' + p.count + '</td><td>' + pct + '%</td></tr>';
-  });
-  html += '</tbody></table></div>';
+  // Overall Status chart (bottom, 3/4 width)
+  html += '<div class="chart-box" style="width:75%"><h3>Overall Status (%)</h3><div class="chart-wrap-sm" style="height:500px"><canvas id="bn-ov-chart"></canvas></div></div>';
 
+  html += '</div>';
   document.getElementById('vc-bottleneck').innerHTML = html;
 
-  const ctx = document.getElementById('bn-chart');
-  if (ctx) {
-    if (chartInstances['bn']) chartInstances['bn'].destroy();
-    chartInstances['bn'] = new Chart(ctx, {
+  // Milestone comparison chart (grouped bar)
+  const msCtx = document.getElementById('bn-ms-chart');
+  if (msCtx) {
+    if (chartInstances['bn-ms']) chartInstances['bn-ms'].destroy();
+    const msLabels = compare.map(p => p.milestone);
+    chartInstances['bn-ms'] = new Chart(msCtx, {
       type: 'bar',
       data: {
-        labels: labels,
-        datasets: [{ label: 'Sites', data: data, backgroundColor: '#f59e0b80', borderColor: '#f59e0b', borderWidth: 1 }]
+        labels: msLabels,
+        datasets: [
+          { label: 'Tracker Completed', data: compare.map(p => p.tracker_completed), backgroundColor: '#3b82f680', borderColor: '#3b82f6', borderWidth: 1 },
+          { label: 'Docs Fully Uploaded', data: compare.map(p => p.docs_complete), backgroundColor: '#22c55e80', borderColor: '#22c55e', borderWidth: 1 }
+        ]
       },
       options: {
-        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const v = context.parsed.x;
-                const pct = total ? (v / total * 100).toFixed(1) : 0;
-                return v + ' sites (' + pct + '%)';
-              }
-            }
-          }
-        },
-        scales: { x: { beginAtZero: true, title: { display: true, text: 'Sites' } } }
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom' } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Sites' } } }
+      }
+    });
+  }
+
+  // Overall status chart
+  const ovCtx = document.getElementById('bn-ov-chart');
+  if (ovCtx) {
+    if (chartInstances['bn-ov']) chartInstances['bn-ov'].destroy();
+    const ovLabels = overall.map(p => p.stage);
+    const ovData = overall.map(p => p.pct);
+    chartInstances['bn-ov'] = new Chart(ovCtx, {
+      type: 'bar',
+      data: {
+        labels: ovLabels,
+        datasets: [{ label: '%', data: ovData, backgroundColor: '#10b98180', borderColor: '#10b981', borderWidth: 1 }]
       },
-      plugins: [{
-        id: 'barLabels',
-        afterDraw(chart) {
-          const ctx2 = chart.ctx;
-          chart.getDatasetMeta(0).data.forEach((bar, i) => {
-            const val = chart.data.datasets[0].data[i];
-            if (val === 0) return;
-            ctx2.font = 'bold 12px sans-serif';
-            ctx2.fillStyle = '#344054';
-            ctx2.textAlign = 'left';
-            ctx2.textBaseline = 'middle';
-            ctx2.fillText(val, bar.x + 6, bar.y);
-          });
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, topLabels: true },
+        scales: {
+          y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } },
+          x: { ticks: { maxRotation: 45, font: { size: 10 } } }
         }
-      }]
+      },
+      plugins: [topLabelsPlugin]
     });
   }
 }
-
-// ── ALERTS ──
-async function renderAlerts() {
-  const alerts = await api('/api/alerts');
-  const atRisk = alerts.filter(a => a.severity !== 'info');
-  const info = alerts.filter(a => a.severity === 'info');
-
-  let html = '<div class="stats">';
-  const sevCounts = { high: 0, medium: 0, info: 0 };
-  alerts.forEach(a => { sevCounts[a.severity] = (sevCounts[a.severity] || 0) + 1; });
-  html += `<div class="stat-card red"><div class="num">${sevCounts.high || 0}</div><div class="lbl">High Risk</div></div>`;
-  html += `<div class="stat-card orange"><div class="num">${sevCounts.medium || 0}</div><div class="lbl">Medium Risk</div></div>`;
-  html += `<div class="stat-card blue"><div class="num">${sevCounts.info || 0}</div><div class="lbl">Info / Bottlenecks</div></div>`;
-  html += `<div class="stat-card green"><div class="num">${alerts.length}</div><div class="lbl">Total Alerts</div></div>`;
-  html += '</div>';
-
-  html += '<h3 style="margin-bottom:12px;font-size:15px;color:#344054">Risk Alerts</h3>';
-  html += '<div class="alert-list">';
-  atRisk.forEach(a => {
-    html += `<div class="alert-item ${a.severity}"><span class="sev ${a.severity}">${a.severity}</span><span class="msg">${a.message}</span><span class="meta">${a.site_code} · ${a.milestone}</span></div>`;
-  });
-  if (!atRisk.length) html += '<div style="padding:20px;text-align:center;color:#22c55e">No risk alerts</div>';
-  html += '</div>';
-
-  if (info.length) {
-    html += '<h3 style="margin:20px 0 12px;font-size:15px;color:#344054">Bottleneck Notifications</h3>';
-    html += '<div class="alert-list">';
-    info.forEach(a => {
-      html += `<div class="alert-item info"><span class="sev info">info</span><span class="msg">${a.message}</span><span class="meta">System</span></div>`;
+// ── LABEL PLUGIN: draw value on top of bars ──
+const topLabelsPlugin = {
+  id: 'topLabels',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((dataset, di) => {
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((bar, idx) => {
+        const val = dataset.data[idx];
+        if (val === undefined || val === null) return;
+        ctx.fillStyle = '#374151';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(val + '%', bar.x, bar.y - 2);
+      });
     });
-    html += '</div>';
   }
-
-  document.getElementById('vc-alerts').innerHTML = html;
-}
-
+};
 init();
 </script>
 </body>
