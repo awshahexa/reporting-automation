@@ -95,45 +95,84 @@ def send_notification_email(site_code, milestone, pdf_path):
 
 
 def send_pmc_validation_email(pv_items):
-    """Send email listing items pending manual verification (no attachment)."""
+    """Send HTML email listing items pending manual verification (no attachment)."""
     if not SMTP.get("host") or not SMTP.get("username"):
         return {"status": "skipped", "message": "SMTP not configured"}
 
+    rows_html = ""
+    for item in pv_items:
+        issues = item.get("issues", "")
+        issues_cell = f'<span style="color:#dc2626;font-size:12px">{issues}</span>' if issues else '<span style="color:#22c55e">OK</span>'
+        rows_html += f"""<tr>
+<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#1f2937">{item.get("site","")}</td>
+<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#374151">{item.get("milestone","")}</td>
+<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#374151">{item.get("doc_type","")}</td>
+<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px">{item.get("filename","")}</td>
+<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">{issues_cell}</td>
+</tr>"""
+
+    html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px">
+<tr><td align="center">
+<table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+<tr><td style="background:#1e40af;padding:20px 24px">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="color:#ffffff;font-size:20px;font-weight:700">PMC Validation Required</td></tr>
+<tr><td style="color:#93c5fd;font-size:13px;margin-top:4px">Items pending manual verification</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:24px">
+<p style="color:#374151;font-size:14px;line-height:1.6">Dear PMC,</p>
+<p style="color:#374151;font-size:14px;line-height:1.6">The following <strong>{len(pv_items)} item(s)</strong> require manual review in the Pending Visual Check folder before they can proceed through the pipeline:</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:12px">
+<thead>
+<tr style="background:#f9fafb">
+<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb">Site</th>
+<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb">Milestone</th>
+<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb">Doc Type</th>
+<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb">Filename</th>
+<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb">Issues</th>
+</tr>
+</thead>
+<tbody>
+{rows_html}
+</tbody>
+</table>
+<p style="color:#374151;font-size:14px;line-height:1.6;margin-top:20px">Please review each item and either <strong style="color:#059669">approve</strong> via <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;font-size:12px">sp-visual-approve &lt;SITE&gt; &lt;MS&gt;</code> or reject if the content does not meet requirements.</p>
+</td></tr>
+<tr><td style="background:#f9fafb;padding:16px 24px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:12px;margin:0">Reporting Automation System &middot; Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+    text_body = (
+        f"Dear PMC,\n\n"
+        f"The following {len(pv_items)} item(s) require manual verification:\n\n"
+        + "\n".join(
+            f"  {item.get('site','')}/{item.get('milestone','')} - {item.get('doc_type','')} - {item.get('filename','')}"
+            + (f"  Issues: {item.get('issues','')}" if item.get("issues") else "")
+            for item in pv_items
+        ) +
+        "\n\nPlease review each item in the Pending Visual Check folder.\n"
+        "Use 'sp-visual-approve <SITE> <MS>' to approve once verified.\n\n"
+        "Regards,\nReporting Automation System"
+    )
+
     msg = EmailMessage()
-    msg["Subject"] = "PMC Validation Required — Items Pending Manual Verification"
+    msg["Subject"] = f"PMC Validation Required — {len(pv_items)} Item(s) Pending Manual Verification"
     msg["From"] = SMTP["from_addr"]
     msg["To"] = SMTP["to_addr"]
     if SMTP.get("cc_addr"):
         msg["Cc"] = SMTP["cc_addr"]
-
-    lines = [
-        "Dear PMC,",
-        "",
-        "The following items require manual verification before they can proceed:",
-        "",
-        f"Total items: {len(pv_items)}",
-        "",
-        f"{'Site':14s} {'Milestone':8s} {'Doc Type':12s} {'Filename':40s}",
-        "-" * 74,
-    ]
-    for item in pv_items:
-        lines.append(
-            f"{item.get('site',''):14s} {item.get('milestone',''):8s} "
-            f"{item.get('doc_type',''):12s} {item.get('filename',''):40s}"
-        )
-        issues = item.get("issues")
-        if issues:
-            lines.append(f"{'':14s} Issues: {issues}")
-
-    lines.extend([
-        "",
-        "Please review each item in the Pending Visual Check folder.",
-        "Use 'sp-visual-approve <SITE> <MS>' to approve once verified.",
-        "",
-        "Regards,",
-        "Reporting Automation System",
-    ])
-    msg.set_content("\n".join(lines))
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
 
     try:
         with smtplib.SMTP(SMTP["host"], SMTP["port"]) as server:
